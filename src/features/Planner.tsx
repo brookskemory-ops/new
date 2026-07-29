@@ -10,14 +10,15 @@ import {
   Field,
   NumberInput,
   Panel,
+  Select,
   Stat,
   Warning,
   fmt,
 } from '../components/ui'
-import { itemName, machineName } from '../data/constants'
+import { BELTS, itemName, machineName } from '../data/constants'
 import type { ItemId, RecipeId } from '../data/types'
 import { formatClock, solveEfficiency } from '../engine/clock'
-import { isLiquid, planThroughput } from '../engine/logistics'
+import { beltFor, describeBelt, isLiquid } from '../engine/logistics'
 import { availableRecipes, solve, suggestAlternates } from '../engine/solve'
 import type { TreeNode } from '../engine/solve'
 import type { UnlockState } from '../state/useUnlocks'
@@ -88,6 +89,9 @@ export function Planner({ unlocks, onGoTo }: { unlocks: UnlockState; onGoTo: (ta
   const totalRaw = [...result.rawResources.values()].reduce((a, b) => a + b, 0)
   const totalMachines = [...result.machineCounts.values()].reduce((a, b) => a + b, 0)
 
+  const beltRuns = useMemo(() => collectBeltRuns(result.tree, plan.beltTier), [result, plan.beltTier])
+  const parallelRuns = beltRuns.filter((run) => run.belt?.needsParallel).length
+
   return (
     <div className="space-y-4">
       {!welcomed && (
@@ -133,6 +137,20 @@ export function Planner({ unlocks, onGoTo }: { unlocks: UnlockState; onGoTo: (ta
             </Field>
             <Field label="Rate" hint={isLiquid(target) ? 'cubic metres per minute' : 'items per minute'}>
               <NumberInput value={rate} onChange={(value) => plan.set('rate', value)} min={0} />
+            </Field>
+
+            <Field
+              label="Best belt you have"
+              hint="Caps what the planner proposes; anything faster runs in parallel lines."
+            >
+              <Select
+                value={plan.beltTier}
+                onChange={(value) => plan.set('beltTier', value)}
+                options={BELTS.map((belt) => ({
+                  value: belt.name,
+                  label: `Conveyor ${belt.name} — ${belt.rate}/min`,
+                }))}
+              />
             </Field>
 
             <label className="flex items-center gap-2 text-sm text-slate-300">
@@ -187,8 +205,34 @@ export function Planner({ unlocks, onGoTo }: { unlocks: UnlockState; onGoTo: (ta
           </div>
         </Panel>
 
+        <Panel
+          title="Belts & pipes"
+          subtitle={`Every run in the chain, at ${plan.beltTier} and below`}
+          help={
+            <>
+              <p>
+                One row per connection in the chain — what has to travel, how fast, and the belt
+                that carries it. Runs needing more than one line are flagged, since those need a
+                splitter and a second belt.
+              </p>
+              <p>
+                Fluids ignore the belt setting and use pipes: Mk.1 carries 300 m³/min, Mk.2 carries
+                600.
+              </p>
+            </>
+          }
+        >
+          {parallelRuns > 0 && (
+            <p className="mb-3 rounded border border-amber-900/60 bg-amber-950/30 px-2 py-1.5 text-xs text-amber-300">
+              {parallelRuns} run{parallelRuns === 1 ? '' : 's'} exceed{parallelRuns === 1 ? 's' : ''}{' '}
+              a single {plan.beltTier} belt and will need splitting across parallel lines.
+            </p>
+          )}
+          <BeltList runs={beltRuns} />
+        </Panel>
+
         <Panel title="Raw resources" subtitle="What the map has to supply">
-          <RateList entries={result.rawResources} />
+          <RateList entries={result.rawResources} beltTier={plan.beltTier} />
         </Panel>
 
         {result.imports.size > 0 && (
@@ -235,6 +279,7 @@ export function Planner({ unlocks, onGoTo }: { unlocks: UnlockState; onGoTo: (ta
               onSetRecipe={setRecipe}
               onToggleImport={toggleImport}
               imported={imported}
+              beltTier={plan.beltTier}
             />
           ) : (
             <Empty>Nothing to build — pick a target item.</Empty>
@@ -318,27 +363,106 @@ export function Planner({ unlocks, onGoTo }: { unlocks: UnlockState; onGoTo: (ta
   )
 }
 
-function RateList({ entries }: { entries: ReadonlyMap<ItemId, number> }) {
+function RateList({
+  entries,
+  beltTier,
+}: {
+  entries: ReadonlyMap<ItemId, number>
+  beltTier?: string
+}) {
   const sorted = [...entries].filter(([, rate]) => rate > 1e-6).sort((a, b) => b[1] - a[1])
   if (sorted.length === 0) return <Empty>None</Empty>
 
   return (
     <ul className="space-y-1 text-sm">
       {sorted.map(([item, rate]) => {
-        const belt = planThroughput(rate, isLiquid(item))
+        const run = beltFor(rate, isLiquid(item), beltTier)
         return (
           <li key={item} className="flex items-baseline justify-between gap-2">
             <span className="text-slate-300">{itemName(item)}</span>
             <span className="text-right">
               <span className="tabular text-slate-100">{fmt(rate, 2)}</span>
               <span className="ml-1 text-xs text-slate-500">
-                /min
-                {belt.singleLine && ` · ${isLiquid(item) ? 'pipe' : 'belt'} ${belt.singleLine.name}`}
+                /min{run && ` · ${describeBelt(run)}`}
               </span>
             </span>
           </li>
         )
       })}
+    </ul>
+  )
+}
+
+/** One belt or pipe run: a link in the chain that physically has to be built. */
+interface BeltRunRow {
+  item: ItemId
+  rate: number
+  /** What consumes it, or null for the factory's final output. */
+  into: ItemId | null
+  belt: ReturnType<typeof beltFor>
+}
+
+/**
+ * Walks the tree collecting every flow. Each node is one item travelling into
+ * whatever sits above it, which is exactly one belt run on the factory floor.
+ * Identical flows into the same consumer are merged; the same item feeding two
+ * different steps stays separate, because that really is two belts.
+ */
+function collectBeltRuns(root: TreeNode, beltTier: string): BeltRunRow[] {
+  const runs = new Map<string, BeltRunRow>()
+
+  const add = (item: ItemId, rate: number, into: ItemId | null): void => {
+    if (rate <= 1e-9) return
+    const key = `${item}->${into ?? 'output'}`
+    const existing = runs.get(key)
+    if (existing) existing.rate += rate
+    else runs.set(key, { item, rate, into, belt: null })
+  }
+
+  add(root.item, root.rate, null)
+  const walk = (node: TreeNode): void => {
+    for (const child of node.children) {
+      add(child.item, child.rate, node.item)
+      walk(child)
+    }
+  }
+  walk(root)
+
+  return [...runs.values()]
+    .map((run) => ({ ...run, belt: beltFor(run.rate, isLiquid(run.item), beltTier) }))
+    .sort((a, b) => b.rate - a.rate)
+}
+
+function BeltList({ runs }: { runs: BeltRunRow[] }) {
+  if (runs.length === 0) return <Empty>Nothing to move.</Empty>
+
+  return (
+    <ul className="space-y-1.5 text-sm">
+      {runs.map((run) => (
+        <li key={`${run.item}->${run.into ?? 'out'}`} className="flex items-baseline gap-2">
+          <span className="min-w-0 flex-1 truncate text-slate-300">
+            {itemName(run.item)}
+            <span className="text-xs text-slate-600">
+              {run.into ? ` → ${itemName(run.into)}` : ' → output'}
+            </span>
+          </span>
+          <span className="tabular shrink-0 text-xs text-slate-500">{fmt(run.rate, 1)}/min</span>
+          {run.belt && (
+            <span
+              className={`shrink-0 rounded px-1.5 py-0.5 text-xs ${
+                run.belt.needsParallel
+                  ? 'bg-amber-950 text-amber-400'
+                  : run.belt.liquid
+                    ? 'bg-sky-950 text-sky-300'
+                    : 'bg-slate-800 text-slate-300'
+              }`}
+              title={`${fmt(run.belt.utilisation * 100, 0)}% of capacity`}
+            >
+              {describeBelt(run.belt)}
+            </span>
+          )}
+        </li>
+      ))}
     </ul>
   )
 }
@@ -349,12 +473,14 @@ function TreeView({
   onSetRecipe,
   onToggleImport,
   imported,
+  beltTier,
 }: {
   node: TreeNode
   options: Parameters<typeof solve>[2]
   onSetRecipe: (item: ItemId, recipe: RecipeId) => void
   onToggleImport: (item: ItemId) => void
   imported: ReadonlySet<ItemId>
+  beltTier: string
 }) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
 
@@ -374,6 +500,7 @@ function TreeView({
         ? solveEfficiency(current.recipe, current.rate, current.item)
         : null
     const isImported = imported.has(current.item)
+    const belt = beltFor(current.rate, isLiquid(current.item), beltTier)
 
     return (
       <li key={key}>
@@ -396,6 +523,25 @@ function TreeView({
 
             <span className="truncate font-medium text-slate-100">{itemName(current.item)}</span>
             <span className="tabular shrink-0 text-ficsit-400">{fmt(current.rate, 2)}/min</span>
+
+            {belt && (
+              <span
+                className={`shrink-0 rounded px-1.5 py-0.5 text-xs ${
+                  belt.needsParallel
+                    ? 'bg-amber-950 text-amber-400'
+                    : belt.liquid
+                      ? 'bg-sky-950 text-sky-300'
+                      : 'bg-slate-800 text-slate-400'
+                }`}
+                title={
+                  belt.needsParallel
+                    ? `${describeBelt(belt)} — one line cannot carry ${fmt(current.rate, 1)}/min, so this run has to be split`
+                    : `${describeBelt(belt)} at ${fmt(belt.utilisation * 100, 0)}% of capacity`
+                }
+              >
+                {describeBelt(belt)}
+              </span>
+            )}
 
             {current.leafReason === 'raw' && <Tag tone="raw">raw</Tag>}
             {current.leafReason === 'imported' && <Tag tone="import">imported</Tag>}

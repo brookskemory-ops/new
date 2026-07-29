@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { gameData, itemsById, recipesById, schematicByRecipe } from '../data/constants'
+import { BELTS, gameData, itemsById, recipesById, schematicByRecipe } from '../data/constants'
 import {
   basePower,
   inputPerMachine,
@@ -11,7 +11,14 @@ import {
 } from './clock'
 import { availableRecipes, chooseRecipe, solve } from './solve'
 import { fuelPerMinute, planFuelChain, planGenerators, waterPerMinute } from './power'
-import { minerOutput, planSplit, planThroughput, supportBuildingFor } from './logistics'
+import {
+  beltFor,
+  describeBelt,
+  minerOutput,
+  planSplit,
+  planThroughput,
+  supportBuildingFor,
+} from './logistics'
 import { couponCost, nextCouponCost, surplusValue } from './sink'
 
 const IRON_ORE = 'Desc_OreIron_C'
@@ -420,6 +427,56 @@ describe('logistics', () => {
     const plan = planThroughput(1000, false)
     expect(plan.perTier.find((t) => t.tier.name === 'Mk.5')!.lines).toBe(2)
     expect(plan.perTier.find((t) => t.tier.name === 'Mk.6')!.lines).toBe(1)
+  })
+
+  it('picks the cheapest belt that carries a rate on one line', () => {
+    expect(describeBelt(beltFor(60, false)!)).toBe('Mk.1')
+    expect(describeBelt(beltFor(61, false)!)).toBe('Mk.2')
+    expect(describeBelt(beltFor(780, false)!)).toBe('Mk.5')
+    expect(describeBelt(beltFor(1200, false)!)).toBe('Mk.6')
+  })
+
+  it('runs parallel lines when one belt cannot carry the rate', () => {
+    const run = beltFor(1500, false)!
+    expect(run.tier.name).toBe('Mk.6')
+    expect(run.lines).toBe(2)
+    expect(run.needsParallel).toBe(true)
+    expect(describeBelt(run)).toBe('2× Mk.6')
+  })
+
+  it('respects the best belt the player actually has', () => {
+    // 270/min fits one Mk.3, but a player on Mk.2 needs three lines.
+    expect(describeBelt(beltFor(270, false, 'Mk.3')!)).toBe('Mk.3')
+    expect(describeBelt(beltFor(270, false, 'Mk.2')!)).toBe('3× Mk.2')
+    expect(describeBelt(beltFor(270, false, 'Mk.1')!)).toBe('5× Mk.1')
+  })
+
+  it('never proposes a belt above the tier available', () => {
+    for (const tier of BELTS) {
+      for (const rate of [10, 200, 900, 5000]) {
+        const run = beltFor(rate, false, tier.name)!
+        expect(run.tier.rate).toBeLessThanOrEqual(tier.rate)
+      }
+    }
+  })
+
+  it('sends fluids down pipes regardless of the belt setting', () => {
+    const run = beltFor(300, true, 'Mk.1')!
+    expect(run.liquid).toBe(true)
+    expect(describeBelt(run)).toBe('Pipe Mk.1')
+    expect(describeBelt(beltFor(600, true, 'Mk.1')!)).toBe('Pipe Mk.2')
+    expect(describeBelt(beltFor(1200, true)!)).toBe('2× Pipe Mk.2')
+  })
+
+  it('reports how full each line runs', () => {
+    close(beltFor(60, false)!.utilisation, 1)
+    close(beltFor(30, false)!.utilisation, 0.5)
+    close(beltFor(1200, false, 'Mk.5')!.utilisation, 1200 / 1560)
+  })
+
+  it('has nothing to carry at zero', () => {
+    expect(beltFor(0, false)).toBeNull()
+    expect(beltFor(-5, false)).toBeNull()
   })
 
   it('uses pipes for liquids', () => {

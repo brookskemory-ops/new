@@ -9,6 +9,12 @@ describe('plan encoding', () => {
     expect(decodePlan('')).toBeNull()
   })
 
+  it('omits a field that happens to match the default', () => {
+    // Mk.6 is the default belt, so setting it explicitly must not bloat the URL.
+    expect(encodePlan({ ...DEFAULT_PLAN, beltTier: 'Mk.6' })).toBe('')
+    expect(encodePlan({ ...DEFAULT_PLAN, beltTier: 'Mk.2' })).not.toBe('')
+  })
+
   it('round-trips a fully customised plan', () => {
     const plan: PlanState = {
       target: 'Desc_ModularFrameHeavy_C',
@@ -20,6 +26,7 @@ describe('plan encoding', () => {
         Desc_Plastic_C: 'Recipe_Alternate_Plastic_1_C',
       },
       imported: ['Desc_Cable_C', 'Desc_Wire_C'],
+      beltTier: 'Mk.3',
     }
     expect(decodePlan(encodePlan(plan))).toEqual(plan)
   })
@@ -33,6 +40,8 @@ describe('plan encoding', () => {
       { respectUnlocks: false },
       { recipeChoices: { Desc_Screw_C: 'Recipe_Alternate_Screw_C' } },
       { imported: ['Desc_Coal_C'] },
+      { beltTier: 'Mk.1' },
+      { beltTier: 'Mk.5' },
     ]
     for (const variation of variations) {
       const plan = { ...DEFAULT_PLAN, ...variation }

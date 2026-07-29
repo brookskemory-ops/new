@@ -18,6 +18,8 @@ export interface PlanState {
   respectUnlocks: boolean
   recipeChoices: Record<ItemId, RecipeId>
   imported: ItemId[]
+  /** Best belt tier available, e.g. "Mk.3". Caps what the planner proposes. */
+  beltTier: string
 }
 
 export const DEFAULT_PLAN: PlanState = {
@@ -27,6 +29,7 @@ export const DEFAULT_PLAN: PlanState = {
   respectUnlocks: true,
   recipeChoices: {},
   imported: [],
+  beltTier: 'Mk.6',
 }
 
 /**
@@ -40,6 +43,7 @@ interface Encoded {
   u?: 0
   o?: Record<string, string>
   i?: string[]
+  b?: string
 }
 
 /** Class names all share these affixes; stripping them roughly halves the URL. */
@@ -62,6 +66,7 @@ export function encodePlan(plan: PlanState): string {
     )
   }
   if (plan.imported.length > 0) encoded.i = plan.imported.map(stripItem)
+  if (plan.beltTier !== DEFAULT_PLAN.beltTier) encoded.b = plan.beltTier
 
   if (Object.keys(encoded).length === 0) return ''
   // base64url keeps the hash free of characters that need percent-encoding.
@@ -86,6 +91,7 @@ export function decodePlan(encoded: string): PlanState | null {
         ]),
       ),
       imported: (parsed.i ?? []).map(expandItem),
+      beltTier: typeof parsed.b === 'string' ? parsed.b : DEFAULT_PLAN.beltTier,
     }
   } catch {
     // A truncated or hand-edited link should fall back, not crash the page.

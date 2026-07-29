@@ -37,6 +37,55 @@ export function isLiquid(item: ItemId): boolean {
   return itemsById.get(item)?.liquid ?? false
 }
 
+export interface BeltRun {
+  tier: BeltTier
+  /** Parallel lines of that tier needed to carry the rate. */
+  lines: number
+  /** How full each line runs, 0-1. Low numbers mean a tier is overkill. */
+  utilisation: number
+  liquid: boolean
+  /** True when one line is not enough and the run has to be split. */
+  needsParallel: boolean
+}
+
+/**
+ * What it takes to actually move a rate, given the best belt you have unlocked.
+ *
+ * Fluids ignore the belt limit and use pipes, picking the cheapest tier that
+ * carries the rate — a pipe is a pipe regardless of belt progression.
+ *
+ * @param maxBeltTier Name of the best belt available, e.g. "Mk.3". Omit for Mk.6.
+ */
+export function beltFor(rate: number, liquid: boolean, maxBeltTier?: string): BeltRun | null {
+  if (rate <= 1e-9) return null
+
+  const tiers = liquid ? PIPES : BELTS
+  const capped = liquid
+    ? tiers
+    : tiers.slice(0, Math.max(1, tiers.findIndex((t) => t.name === maxBeltTier) + 1 || tiers.length))
+
+  // Prefer a tier that carries it on one line; otherwise run the best available
+  // in parallel.
+  const single = capped.find((tier) => rate <= tier.rate + 1e-9)
+  const tier = single ?? capped[capped.length - 1]
+  if (!tier) return null
+
+  const lines = Math.ceil(rate / tier.rate - 1e-9)
+  return {
+    tier,
+    lines,
+    utilisation: rate / (lines * tier.rate),
+    liquid,
+    needsParallel: lines > 1,
+  }
+}
+
+/** Formats a belt run the way you'd say it out loud: "2× Mk.5" or just "Mk.3". */
+export function describeBelt(run: BeltRun): string {
+  const label = run.liquid ? `Pipe ${run.tier.name}` : run.tier.name
+  return run.lines > 1 ? `${run.lines}× ${label}` : label
+}
+
 export interface MinerOutput {
   miner: Miner
   purity: Purity

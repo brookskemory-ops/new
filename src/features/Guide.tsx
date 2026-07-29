@@ -156,6 +156,23 @@ export function Guide({ onGoTo }: { onGoTo: (tab: string) => void }) {
             </p>
           </Concept>
 
+          <Concept title="Every row is a belt you have to build">
+            <p>
+              Each step shows the belt that carries it — <Tag tone="belt">Mk.4</Tag> style badges in
+              the chain, and a full list in <strong className="text-slate-200">Belts &amp; pipes</strong>{' '}
+              showing what feeds what.
+            </p>
+            <p>
+              Set <em>Best belt you have</em> to the tier you've actually unlocked. Anything a
+              single belt can't carry is flagged in amber as{' '}
+              <span className="tabular">3× Mk.2</span> or similar — that's a splitter and parallel
+              lines, not one belt. It's usually the cheapest signal that a design needs rethinking.
+            </p>
+            <p className="text-slate-400">
+              Fluids ignore the setting and use pipes: Mk.1 moves 300 m³/min, Mk.2 moves 600.
+            </p>
+          </Concept>
+
           <Concept title="Import anything you're making somewhere else">
             <p>
               The <span className="text-sky-300">import</span> link on any row stops the chain
@@ -307,7 +324,10 @@ function Code({ children }: { children: ReactNode }) {
   )
 }
 
-function Tag({ children, tone }: { children: ReactNode; tone: 'raw' }) {
-  const tones = { raw: 'bg-emerald-950 text-emerald-400' }
+function Tag({ children, tone }: { children: ReactNode; tone: 'raw' | 'belt' }) {
+  const tones = {
+    raw: 'bg-emerald-950 text-emerald-400',
+    belt: 'bg-slate-800 text-slate-300',
+  }
   return <span className={`rounded px-1.5 py-0.5 text-xs ${tones[tone]}`}>{children}</span>
 }
