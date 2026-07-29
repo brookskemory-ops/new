@@ -46,10 +46,29 @@ in your browser; with nothing ticked it falls back to using every recipe.
 ```bash
 npm install
 npm run dev      # local dev server
-npm run test     # engine unit tests
+npm run test     # unit tests
 npm run build    # production build into dist/
 npm run preview  # serve the production build
 ```
+
+## Desktop app
+
+There's a Tauri shell, so it also builds as a native Windows app — about 10 MB,
+using the WebView2 runtime already on Windows 10 and 11.
+
+```bash
+npm run tauri:dev    # desktop app in dev mode
+npm run tauri:build  # installers into src-tauri/target/release/bundle/
+```
+
+Building a Windows binary has to happen on Windows, so
+`.github/workflows/release.yml` does it on a Windows runner. Run it by hand from
+the Actions tab to get an installer as a downloadable artifact, or push a `v*`
+tag to publish a release.
+
+**Windows will show a SmartScreen warning the first time you run it** — the
+installer isn't code signed, which needs a paid certificate. Choose *More info*
+then *Run anyway*.
 
 Pushing to `main` builds and publishes to GitHub Pages via
 `.github/workflows/deploy.yml`. That needs Pages set to "GitHub Actions" as its
@@ -81,7 +100,7 @@ Recipe data covers Satisfactory **1.0** and is bundled at
 `src/data/game-data.json` — 152 items, 276 machine recipes, all machines,
 generators, extractors and 208 unlock schematics.
 
-To rebuild it from upstream:
+To rebuild it from the community dump:
 
 ```bash
 npm run build:data
@@ -89,10 +108,32 @@ npm run build:data
 
 The committed output means CI and the browser never need network access.
 
-**A caveat worth knowing:** the game is on 1.1 and this data is from 1.0. Core
-recipe maths is unchanged, but if a number looks wrong, check it against the
-in-game recipe screen — and tell me, because that's a data problem, not a maths
-problem.
+### Getting data for the version you're playing
+
+The game is on 1.2 and the bundled data is 1.0. Neither 1.1 nor 1.2 changed any
+recipe, machine power, throughput or generator figure — I checked both sets of
+patch notes — so the numbers here are still right. What's missing is 1.2's new
+content, such as the Fluid Truck Station.
+
+No public dataset exists past 1.0, but your game ships its own. Point the build
+script at it:
+
+```bash
+npm run build:data -- --docs "C:\Program Files\Epic Games\SatisfactoryEarlyAccess\CommunityResources\Docs\en-US.json"
+```
+
+Steam installs put it under
+`steamapps\common\Satisfactory\CommunityResources\Docs` instead.
+
+The parser checks its own output before writing — item and recipe counts, a
+Constructor at 4 MW, Iron Plate at 6 s for 3 ingots, a Coal Generator at 75 MW,
+and Plastic consuming 3 m³ of oil so fluid units can't silently be off by 1000.
+If any check fails it writes nothing and tells you what looked wrong, rather than
+leaving you with a tool that computes confident nonsense.
+
+It's tested against a real game docs export, but only you can run it against a
+genuine 1.2 file — if it rejects yours, send me the message and I'll fix the
+parser.
 
 ## Credits
 

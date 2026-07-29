@@ -6,3 +6,7 @@ dist/
 
 # TypeScript incremental build info
 tsconfig.tsbuildinfo
+
+# Rust build output
+src-tauri/target/
+src-tauri/gen/

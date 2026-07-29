@@ -9,9 +9,11 @@
  * data is used here; the upstream image assets are copyrighted by Coffee Stain
  * Studios and are deliberately not vendored.
  */
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
+
+import { parseDocs, validateGameData } from '../src/data/parse-docs'
 
 const SOURCE_URL =
   'https://raw.githubusercontent.com/greeny/SatisfactoryTools/master/data/data1.0.json'
@@ -93,7 +95,65 @@ interface RawData {
   resources: Record<string, { item: string; speed: number }>
 }
 
+/**
+ * Builds the dataset from the docs file that ships with the game, which is the
+ * only way to get data for the version you are actually playing.
+ *
+ * Usage: `npm run build:data -- --docs "<path to en-US.json>"`
+ */
+function buildFromGameDocs(docsPath: string, version?: string): void {
+  console.log(`Reading ${docsPath} ...`)
+  const bytes = readFileSync(docsPath)
+
+  // The game writes these UTF-16 with a byte order mark.
+  let text: string
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) text = bytes.subarray(2).toString('utf16le')
+  else if (bytes[0] === 0xfe && bytes[1] === 0xff) text = bytes.subarray(2).swap16().toString('utf16le')
+  else text = bytes.toString('utf8')
+
+  const data = parseDocs(text.replace(/^﻿/, ''), version ?? 'from game docs')
+
+  const problems = validateGameData(data)
+  if (problems.length > 0) {
+    // Writing a dataset that failed its checks would give a tool that computes
+    // confident nonsense, which is worse than no tool.
+    console.error('\nThe parsed data failed validation:')
+    for (const problem of problems) console.error(`  - ${problem}`)
+    console.error(
+      '\nNothing was written. This usually means the docs format changed.\n' +
+        'Please open an issue with your game version so the parser can be updated.',
+    )
+    process.exit(1)
+  }
+
+  writeFileSync(OUT_PATH, `${JSON.stringify(data, null, 0)}\n`)
+  console.log(
+    `Wrote ${OUT_PATH}\n` +
+      `  ${data.items.length} items, ${data.recipes.length} recipes ` +
+      `(${data.recipes.filter((r) => r.alternate).length} alternate), ` +
+      `${data.machines.length} machines,\n` +
+      `  ${data.schematics.length} schematics, ${data.generators.length} generators, ` +
+      `${data.miners.length} extractors — ${Math.round(JSON.stringify(data).length / 1024)} KB`,
+  )
+}
+
 async function main(): Promise<void> {
+  const args = process.argv.slice(2)
+  const docsIndex = args.indexOf('--docs')
+  if (docsIndex !== -1) {
+    const docsPath = args[docsIndex + 1]
+    if (!docsPath) {
+      console.error(
+        'Usage: npm run build:data -- --docs "<path to en-US.json>"\n' +
+          'The file lives in your game folder under CommunityResources/Docs.',
+      )
+      process.exit(1)
+    }
+    const versionIndex = args.indexOf('--version')
+    buildFromGameDocs(docsPath, versionIndex === -1 ? undefined : args[versionIndex + 1])
+    return
+  }
+
   console.log(`Fetching ${SOURCE_URL} ...`)
   const response = await fetch(SOURCE_URL)
   if (!response.ok) {

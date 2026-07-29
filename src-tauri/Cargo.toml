@@ -1,0 +1,27 @@
+[package]
+name = "satisfactory-companion"
+version = "1.0.0"
+description = "Factory planner and calculator suite for Satisfactory"
+authors = ["Satisfactory Companion"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "satisfactory_companion_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+
+[profile.release]
+# The app is a calculator, not a game: favour a small binary over raw speed.
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
