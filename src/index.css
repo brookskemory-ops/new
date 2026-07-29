@@ -1,0 +1,63 @@
+@import 'tailwindcss';
+
+/*
+ * Satisfactory's own palette: orange on deep slate. Dark only — this is meant to
+ * sit next to a game window at night.
+ */
+@theme {
+  --color-ficsit-50: #fff7ed;
+  --color-ficsit-300: #fdba74;
+  --color-ficsit-400: #fb923c;
+  --color-ficsit-500: #f97316;
+  --color-ficsit-600: #ea580c;
+  --color-ficsit-700: #c2410c;
+
+  --color-slate-850: #172033;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-slate-950);
+  color: var(--color-slate-200);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numeric columns line up only if the digits are the same width. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Keyboard users need to see where they are; mouse users don't need the ring. */
+:focus-visible {
+  outline: 2px solid var(--color-ficsit-500);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
