@@ -1,29 +1,106 @@
 /** Small shared building blocks so the tabs stay consistent. */
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 
 export function Panel({
   title,
   subtitle,
+  help,
   children,
   className = '',
 }: {
   title?: string
   subtitle?: ReactNode
+  /** Longer explanation, revealed by a "?" next to the title. */
+  help?: ReactNode
   children: ReactNode
   className?: string
 }) {
+  const [showHelp, setShowHelp] = useState(false)
+
   return (
     <section
       className={`rounded-lg border border-slate-800 bg-slate-900/60 p-4 shadow-sm ${className}`}
     >
       {title && (
         <header className="mb-3">
-          <h2 className="text-sm font-semibold tracking-wide text-ficsit-400 uppercase">{title}</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold tracking-wide text-ficsit-400 uppercase">
+              {title}
+            </h2>
+            {help && (
+              <button
+                type="button"
+                onClick={() => setShowHelp((open) => !open)}
+                aria-expanded={showHelp}
+                aria-label={showHelp ? `Hide help for ${title}` : `What is ${title}?`}
+                className={`flex h-4 w-4 items-center justify-center rounded-full border text-[10px] leading-none transition ${
+                  showHelp
+                    ? 'border-ficsit-500 bg-ficsit-500 text-white'
+                    : 'border-slate-600 text-slate-400 hover:border-ficsit-500 hover:text-ficsit-400'
+                }`}
+              >
+                ?
+              </button>
+            )}
+          </div>
           {subtitle && <p className="mt-1 text-xs text-slate-400">{subtitle}</p>}
+          {help && showHelp && (
+            <div className="mt-2 space-y-2 rounded-md border border-slate-700 bg-slate-950/70 p-3 text-xs leading-relaxed text-slate-300">
+              {help}
+            </div>
+          )}
         </header>
       )}
       {children}
     </section>
+  )
+}
+
+/**
+ * An inline term that explains itself on hover or focus. Used for the handful of
+ * Satisfactory concepts the numbers depend on.
+ */
+export function Term({ children, definition }: { children: ReactNode; definition: string }) {
+  return (
+    <span
+      tabIndex={0}
+      title={definition}
+      className="cursor-help border-b border-dotted border-slate-500 outline-none focus-visible:border-ficsit-400 focus-visible:text-ficsit-300"
+    >
+      {children}
+    </span>
+  )
+}
+
+/** A dismissible note. `id` keys the dismissal so it stays gone. */
+export function Callout({
+  id,
+  title,
+  children,
+  onDismiss,
+}: {
+  id: string
+  title: string
+  children: ReactNode
+  onDismiss?: (id: string) => void
+}) {
+  return (
+    <div className="rounded-lg border border-ficsit-800/70 bg-ficsit-950/30 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="text-sm font-semibold text-ficsit-300">{title}</h2>
+        {onDismiss && (
+          <button
+            type="button"
+            onClick={() => onDismiss(id)}
+            className="shrink-0 rounded px-2 py-0.5 text-xs text-slate-400 transition hover:bg-slate-800 hover:text-slate-100"
+          >
+            Dismiss
+          </button>
+        )}
+      </div>
+      <div className="mt-2 space-y-2 text-sm leading-relaxed text-slate-300">{children}</div>
+    </div>
   )
 }
 

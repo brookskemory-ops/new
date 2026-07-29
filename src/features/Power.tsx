@@ -29,7 +29,7 @@ export function Power({ unlocks }: { unlocks: UnlockState }) {
   const { plan, production } = chain
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[22rem_1fr]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
       <div className="space-y-4">
         <Panel title="Power plant">
           <div className="space-y-3">

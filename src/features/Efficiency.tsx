@@ -4,8 +4,9 @@
  */
 import { useMemo, useState } from 'react'
 
+import { RecipePicker } from '../components/RecipePicker'
 import { Field, NumberInput, Panel, Select, Stat, fmt } from '../components/ui'
-import { MAX_CLOCK, SOMERSLOOP_SLOTS, gameData, itemName, machineName } from '../data/constants'
+import { MAX_CLOCK, SOMERSLOOP_SLOTS, itemName } from '../data/constants'
 import type { RecipeId } from '../data/types'
 import {
   basePower,
@@ -30,17 +31,6 @@ export function Efficiency() {
   const [somersloops, setSomersloops] = useState(0)
 
   const recipe = recipesById.get(recipeId)!
-
-  const recipeOptions = useMemo(
-    () =>
-      [...gameData.recipes]
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .map((r) => ({
-          value: r.className,
-          label: `${r.name}${r.alternate ? ' (alt)' : ''} — ${machineName(r.machine)}`,
-        })),
-    [],
-  )
 
   // When sizing from an available input, convert that input rate into the output
   // rate it can sustain, then solve as normal.
@@ -73,10 +63,25 @@ export function Efficiency() {
       <Panel
         title="Uptime solver"
         subtitle="How many machines, and at what clock, to run at exactly 100% with nothing idling."
+        help={
+          <>
+            <p>
+              Two ways to use it. <strong className="text-slate-200">Output I want</strong> sizes a
+              line to a target. <strong className="text-slate-200">Input I have</strong> is the more
+              useful one: give it what a node or belt actually delivers, and it works out what you
+              can run without starving or backing up.
+            </p>
+            <p>
+              You get up to three arrangements. The even underclock always draws the least power;
+              the split option is easier to build a machine at a time; the overclocked one trades
+              power and shards for floor space.
+            </p>
+          </>
+        }
       >
         <div className="space-y-3">
           <Field label="Recipe">
-            <Select value={recipeId} onChange={setRecipeId} options={recipeOptions} />
+            <RecipePicker value={recipeId} onChange={setRecipeId} />
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
@@ -151,7 +156,23 @@ export function Efficiency() {
         </div>
       </Panel>
 
-      <Panel title="Single machine" subtitle="What one machine does at a given clock and sloop count.">
+      <Panel
+        title="Single machine"
+        subtitle="What one machine does at a given clock and sloop count."
+        help={
+          <>
+            <p>
+              Power scales with clock<sup>1.321929</sup>, so the curve is not linear. Halving the
+              clock saves about 60% of the power; running at 250% costs roughly 3.4× for 2.5× the
+              output.
+            </p>
+            <p>
+              Somersloops multiply production without extra inputs, but square the power draw. They
+              pay off when a resource node is your limit, not when power is.
+            </p>
+          </>
+        }
+      >
         <div className="space-y-3">
           <Field label={`Clock speed — ${formatClock(clockFraction)}`}>
             <input

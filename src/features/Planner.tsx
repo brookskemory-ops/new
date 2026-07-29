@@ -2,7 +2,18 @@
 import { useMemo, useState } from 'react'
 
 import { ItemPicker } from '../components/ItemPicker'
-import { Button, Count, Empty, Field, NumberInput, Panel, Stat, Warning, fmt } from '../components/ui'
+import {
+  Button,
+  Callout,
+  Count,
+  Empty,
+  Field,
+  NumberInput,
+  Panel,
+  Stat,
+  Warning,
+  fmt,
+} from '../components/ui'
 import { itemName, machineName } from '../data/constants'
 import type { ItemId, RecipeId } from '../data/types'
 import { formatClock, solveEfficiency } from '../engine/clock'
@@ -12,8 +23,26 @@ import type { TreeNode } from '../engine/solve'
 import type { UnlockState } from '../state/useUnlocks'
 import { usePlan } from '../state/usePlan'
 
-export function Planner({ unlocks }: { unlocks: UnlockState }) {
+const WELCOME_KEY = 'satisfactory-companion:welcomed'
+
+export function Planner({ unlocks, onGoTo }: { unlocks: UnlockState; onGoTo: (tab: string) => void }) {
   const plan = usePlan()
+  const [welcomed, setWelcomed] = useState(() => {
+    try {
+      return localStorage.getItem(WELCOME_KEY) === 'yes'
+    } catch {
+      return false
+    }
+  })
+
+  const dismissWelcome = (): void => {
+    setWelcomed(true)
+    try {
+      localStorage.setItem(WELCOME_KEY, 'yes')
+    } catch {
+      // Private browsing: the note will just come back next time.
+    }
+  }
   const { target, rate, creditByproducts, respectUnlocks } = plan
   const [copied, setCopied] = useState(false)
 
@@ -60,9 +89,44 @@ export function Planner({ unlocks }: { unlocks: UnlockState }) {
   const totalMachines = [...result.machineCounts.values()].reduce((a, b) => a + b, 0)
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[22rem_1fr]">
+    <div className="space-y-4">
+      {!welcomed && (
+        <Callout id="welcome" title="New here? Two things and you're away." onDismiss={dismissWelcome}>
+          <p>
+            Set a target item and a rate. The production chain then tells you every machine, input
+            rate and megawatt it takes to sustain it — that's the whole idea.
+          </p>
+          <p>
+            <button
+              type="button"
+              onClick={() => onGoTo('guide')}
+              className="font-medium text-ficsit-400 underline decoration-dotted underline-offset-2 hover:text-ficsit-300"
+            >
+              Read the guide
+            </button>{' '}
+            for the concepts behind the numbers — clock speeds, alternates, byproducts.
+          </p>
+        </Callout>
+      )}
+
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
       <div className="space-y-4">
-        <Panel title="Target">
+        <Panel
+          title="Target"
+          help={
+            <>
+              <p>
+                Everything starts here. Choose what you want to come out of the factory and how
+                fast, in units per minute.
+              </p>
+              <p>
+                <strong className="text-slate-200">Feed byproducts back in</strong> subtracts
+                second outputs — like the Heavy Oil Residue that Plastic makes — from demand
+                elsewhere, instead of listing them as surplus you have to deal with.
+              </p>
+            </>
+          }
+        >
           <div className="space-y-3">
             <Field label="Item">
               <ItemPicker value={target} onChange={(item) => plan.set('target', item)} />
@@ -249,6 +313,7 @@ export function Planner({ unlocks }: { unlocks: UnlockState }) {
           </Panel>
         )}
       </div>
+      </div>
     </div>
   )
 }
@@ -308,112 +373,144 @@ function TreeView({
       current.recipe && current.machines > 0
         ? solveEfficiency(current.recipe, current.rate, current.item)
         : null
+    const isImported = imported.has(current.item)
 
     return (
-      <li key={key} className="relative">
-        <div
-          className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded px-2 py-1.5 hover:bg-slate-800/40"
-          style={{ marginLeft: current.depth * 16 }}
-        >
-          {hasChildren ? (
-            <button
-              type="button"
-              className="w-4 shrink-0 text-slate-500 hover:text-slate-200"
-              onClick={() => toggle(key)}
-              aria-label={isCollapsed ? 'Expand' : 'Collapse'}
-            >
-              {isCollapsed ? '▸' : '▾'}
-            </button>
-          ) : (
-            <span className="w-4 shrink-0" />
-          )}
+      <li key={key}>
+        <div className="group flex flex-wrap items-center gap-x-3 gap-y-1 rounded px-2 py-1.5 transition hover:bg-slate-800/40">
+          {/* Identity: what this step makes and how much of it. */}
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            {hasChildren ? (
+              <button
+                type="button"
+                className="w-4 shrink-0 rounded text-slate-500 transition hover:text-slate-100"
+                onClick={() => toggle(key)}
+                aria-expanded={!isCollapsed}
+                aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${itemName(current.item)}`}
+              >
+                {isCollapsed ? '▸' : '▾'}
+              </button>
+            ) : (
+              <span className="w-4 shrink-0" aria-hidden="true" />
+            )}
 
-          <span className="font-medium text-slate-100">{itemName(current.item)}</span>
-          <span className="tabular text-ficsit-400">{fmt(current.rate, 2)}/min</span>
+            <span className="truncate font-medium text-slate-100">{itemName(current.item)}</span>
+            <span className="tabular shrink-0 text-ficsit-400">{fmt(current.rate, 2)}/min</span>
 
-          {current.creditedRate !== undefined && (
-            <span
-              className="tabular text-xs text-emerald-400"
-              title={`This branch consumes ${fmt(current.grossRate ?? 0, 2)}/min, of which ${fmt(current.creditedRate, 2)}/min comes from a byproduct elsewhere in the plan.`}
-            >
-              ({fmt(current.grossRate ?? 0, 2)} − {fmt(current.creditedRate, 2)} from byproduct)
-            </span>
-          )}
+            {current.leafReason === 'raw' && <Tag tone="raw">raw</Tag>}
+            {current.leafReason === 'imported' && <Tag tone="import">imported</Tag>}
+            {current.leafReason === 'cycle' && <Tag tone="warn">loop</Tag>}
+            {current.leafReason === 'no-recipe' && <Tag tone="muted">no recipe</Tag>}
 
+            {isCollapsed && hasChildren && (
+              <span className="shrink-0 text-xs text-slate-600">
+                {countDescendants(current)} steps hidden
+              </span>
+            )}
+          </div>
+
+          {/* Cost: machines and power for this branch. */}
           {current.recipe && (
-            <>
-              <span className="tabular text-xs text-slate-400">
-                {Math.ceil(current.machines - 1e-9)}&times; {machineName(current.recipe.machine)}
-                {efficiency && efficiency.options[0] && (
-                  <span className="ml-1 text-slate-500">
+            <div className="tabular flex shrink-0 items-center gap-3 text-xs">
+              <span className="text-slate-400">
+                {Math.ceil(current.machines - 1e-9)}&times;{' '}
+                <span className="text-slate-500">{machineName(current.recipe.machine)}</span>
+                {efficiency?.options[0] && (
+                  <span className="ml-1 text-slate-600">
                     @ {formatClock(efficiency.options[0].clock)}
                   </span>
                 )}
               </span>
-              <span className="tabular text-xs text-slate-500">{fmt(current.power, 1)} MW</span>
-            </>
+              <span className="w-16 text-right text-slate-500">{fmt(current.power, 1)} MW</span>
+            </div>
           )}
 
-          {current.leafReason === 'raw' && (
-            <span className="rounded bg-emerald-950 px-1.5 py-0.5 text-xs text-emerald-400">raw</span>
-          )}
-          {current.leafReason === 'imported' && (
-            <span className="rounded bg-sky-950 px-1.5 py-0.5 text-xs text-sky-300">imported</span>
-          )}
-          {current.leafReason === 'cycle' && (
-            <span className="rounded bg-amber-950 px-1.5 py-0.5 text-xs text-amber-400">loop</span>
-          )}
-          {current.leafReason === 'no-recipe' && (
-            <span className="rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-400">
-              no recipe
-            </span>
-          )}
+          {/* Controls: stay quiet until the row is hovered or focused. */}
+          <div className="flex shrink-0 items-center gap-2 opacity-60 transition group-focus-within:opacity-100 group-hover:opacity-100">
+            {alternatives.length > 1 && current.recipe && (
+              <select
+                className="max-w-[14rem] rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-300 transition hover:border-slate-600"
+                value={current.recipe.className}
+                aria-label={`Recipe for ${itemName(current.item)}`}
+                onChange={(event) => onSetRecipe(current.item, event.target.value)}
+              >
+                {alternatives.map((recipe) => (
+                  <option key={recipe.className} value={recipe.className}>
+                    {recipe.name}
+                    {recipe.alternate ? ' (alt)' : ''}
+                  </option>
+                ))}
+              </select>
+            )}
 
-          {alternatives.length > 1 && current.recipe && (
-            <select
-              className="ml-auto max-w-[16rem] rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-300"
-              value={current.recipe.className}
-              onChange={(event) => onSetRecipe(current.item, event.target.value)}
-            >
-              {alternatives.map((recipe) => (
-                <option key={recipe.className} value={recipe.className}>
-                  {recipe.name}
-                  {recipe.alternate ? ' (alt)' : ''}
-                </option>
-              ))}
-            </select>
-          )}
-
-          {current.leafReason !== 'raw' && (
-            <button
-              type="button"
-              className="text-xs text-slate-500 hover:text-sky-300"
-              onClick={() => onToggleImport(current.item)}
-              title="Treat this item as shipped in from another factory"
-            >
-              {imported.has(current.item) ? 'produce here' : 'import'}
-            </button>
-          )}
+            {current.leafReason !== 'raw' && (
+              <button
+                type="button"
+                className={`rounded px-1.5 py-0.5 text-xs transition ${
+                  isImported
+                    ? 'bg-sky-950 text-sky-300 hover:bg-sky-900'
+                    : 'text-slate-500 hover:bg-slate-800 hover:text-sky-300'
+                }`}
+                onClick={() => onToggleImport(current.item)}
+                title={
+                  isImported
+                    ? `Go back to producing ${itemName(current.item)} in this factory`
+                    : `Treat ${itemName(current.item)} as shipped in from another factory, and stop expanding this branch`
+                }
+              >
+                {isImported ? 'produce here' : 'import'}
+              </button>
+            )}
+          </div>
         </div>
 
+        {current.creditedRate !== undefined && (
+          <p className="ml-8 text-xs text-emerald-400/90">
+            {fmt(current.grossRate ?? 0, 2)}/min needed, {fmt(current.creditedRate, 2)}/min of it
+            covered by a byproduct elsewhere
+          </p>
+        )}
+
         {current.byproducts.length > 0 && (
-          <div
-            className="px-2 text-xs text-slate-500"
-            style={{ marginLeft: current.depth * 16 + 24 }}
-          >
-            byproduct:{' '}
-            {current.byproducts
-              .map((b) => `${itemName(b.item)} ${fmt(b.rate, 2)}/min`)
-              .join(', ')}
-          </div>
+          <p className="ml-8 text-xs text-slate-500">
+            also makes{' '}
+            {current.byproducts.map((b) => `${itemName(b.item)} ${fmt(b.rate, 2)}/min`).join(', ')}
+          </p>
         )}
 
         {hasChildren && !isCollapsed && (
-          <ul>{current.children.map((child, index) => render(child, `${key}.${index}`))}</ul>
+          // Nesting draws the hierarchy, so depth needs no inline indentation and
+          // deep chains cannot push the row off the side of the panel.
+          <ul className="ml-[0.65rem] border-l border-slate-800 pl-3">
+            {current.children.map((child, index) => render(child, `${key}.${index}`))}
+          </ul>
         )}
       </li>
     )
   }
 
   return <ul className="text-sm">{render(node, 'root')}</ul>
+}
+
+function Tag({
+  children,
+  tone,
+}: {
+  children: React.ReactNode
+  tone: 'raw' | 'import' | 'warn' | 'muted'
+}) {
+  const tones = {
+    raw: 'bg-emerald-950 text-emerald-400',
+    import: 'bg-sky-950 text-sky-300',
+    warn: 'bg-amber-950 text-amber-400',
+    muted: 'bg-slate-800 text-slate-400',
+  }
+  return (
+    <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs ${tones[tone]}`}>{children}</span>
+  )
+}
+
+/** How many steps a collapsed branch is hiding. */
+function countDescendants(node: TreeNode): number {
+  return node.children.reduce((total, child) => total + 1 + countDescendants(child), 0)
 }

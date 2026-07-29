@@ -23,7 +23,7 @@ export function Sink({ unlocks }: { unlocks: UnlockState }) {
   }, [couponsClaimed])
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[22rem_1fr]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
       <div className="space-y-4">
         <Panel title="Coupons">
           <div className="space-y-3">

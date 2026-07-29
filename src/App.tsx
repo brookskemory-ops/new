@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { gameData } from './data/constants'
 import { Efficiency } from './features/Efficiency'
+import { Guide } from './features/Guide'
 import { Logistics } from './features/Logistics'
 import { Planner } from './features/Planner'
 import { Power } from './features/Power'
@@ -16,6 +17,7 @@ const TABS = [
   { id: 'logistics', label: 'Logistics' },
   { id: 'sink', label: 'Sink' },
   { id: 'unlocks', label: 'Unlocks' },
+  { id: 'guide', label: 'Guide' },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -58,7 +60,10 @@ export function App() {
                   key={entry.id}
                   type="button"
                   onClick={() => select(entry.id)}
+                  aria-current={tab === entry.id ? 'page' : undefined}
                   className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                    entry.id === 'guide' ? 'ml-2 border border-slate-700' : ''
+                  } ${
                     tab === entry.id
                       ? 'bg-ficsit-600 text-white'
                       : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
@@ -77,12 +82,15 @@ export function App() {
       </header>
 
       <main className="mx-auto max-w-[100rem] px-4 py-4">
-        {tab === 'planner' && <Planner unlocks={unlocks} />}
+        {tab === 'planner' && (
+          <Planner unlocks={unlocks} onGoTo={(next) => select(next as TabId)} />
+        )}
         {tab === 'efficiency' && <Efficiency />}
         {tab === 'power' && <Power unlocks={unlocks} />}
         {tab === 'logistics' && <Logistics />}
         {tab === 'sink' && <Sink unlocks={unlocks} />}
         {tab === 'unlocks' && <Unlocks unlocks={unlocks} />}
+        {tab === 'guide' && <Guide onGoTo={(next) => select(next as TabId)} />}
       </main>
 
       <footer className="mx-auto max-w-[100rem] px-4 pb-8 text-xs text-slate-600">
