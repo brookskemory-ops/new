@@ -10,8 +10,8 @@ describe('plan encoding', () => {
   })
 
   it('omits a field that happens to match the default', () => {
-    // Mk.6 is the default belt, so setting it explicitly must not bloat the URL.
-    expect(encodePlan({ ...DEFAULT_PLAN, beltTier: 'Mk.6' })).toBe('')
+    // "auto" is the default belt setting, so it must not bloat the URL.
+    expect(encodePlan({ ...DEFAULT_PLAN, beltTier: 'auto' })).toBe('')
     expect(encodePlan({ ...DEFAULT_PLAN, beltTier: 'Mk.2' })).not.toBe('')
   })
 

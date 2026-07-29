@@ -46,7 +46,11 @@ export function Guide({ onGoTo }: { onGoTo: (tab: string) => void }) {
 
       <Panel title="Reading the production chain">
         <p className="mb-3 max-w-prose text-sm leading-relaxed text-slate-300">
-          Each row is one step in the chain, indented under whatever consumes it. A row reads:
+          Each row is one step. By default the chain is in{' '}
+          <strong className="text-slate-200">build order</strong> — raw ore at the top, the finished
+          item at the bottom, which is the sequence you actually place machines in. Switch to{' '}
+          <strong className="text-slate-200">Breakdown</strong> to read it the other way, starting
+          from the finished item. A row reads:
         </p>
         <div className="overflow-x-auto rounded-md border border-slate-800 bg-slate-950/70 p-3">
           <div className="flex min-w-[30rem] items-center gap-3 text-sm whitespace-nowrap">
@@ -170,6 +174,19 @@ export function Guide({ onGoTo }: { onGoTo: (tab: string) => void }) {
             </p>
             <p className="text-slate-400">
               Fluids ignore the setting and use pipes: Mk.1 moves 300 m³/min, Mk.2 moves 600.
+            </p>
+          </Concept>
+
+          <Concept title="Raw resources tell you what to put a miner on">
+            <p>
+              Each raw input lists the node combinations that supply it — one pure node, two
+              normal, four impure — with the clock each miner runs at. Match it against what's
+              actually near you.
+            </p>
+            <p>
+              Clocks are always set so nothing over-extracts, and the arrangements shown need no
+              Power Shards. Where overclocking would save you a node, it's mentioned in brackets,
+              since a spare node is sometimes harder to find than shards.
             </p>
           </Concept>
 

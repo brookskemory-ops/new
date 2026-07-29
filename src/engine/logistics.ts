@@ -4,7 +4,7 @@
 import { BELTS, PIPES, PURITY, gameData, itemsById } from '../data/constants'
 import type { BeltTier, Purity } from '../data/constants'
 import type { ItemId, Miner, SupportBuilding } from '../data/types'
-import { POWER_EXPONENT } from '../data/constants'
+import { MAX_CLOCK, POWER_EXPONENT } from '../data/constants'
 
 export interface ThroughputPlan {
   /** The cheapest tier that carries the whole rate on one line, if one exists. */
@@ -151,6 +151,83 @@ export function solidMiners(): Miner[] {
 /** Liquid extractors, ordered by rate. */
 export function liquidExtractors(): Miner[] {
   return gameData.miners.filter((m) => m.allowLiquids).sort((a, b) => a.itemsPerMinute - b.itemsPerMinute)
+}
+
+export interface NodePlan {
+  miner: Miner
+  purity: Purity
+  /** Whole nodes of this purity needed. */
+  nodes: number
+  /** Clock every miner runs at to hit the rate exactly, without over-extracting. */
+  clock: number
+  /** Extraction per node at that clock. */
+  perNode: number
+  /** MW drawn by all of them together. */
+  power: number
+  /**
+   * A shard-funded alternative using one fewer node, when that stays within the
+   * 250% ceiling. Null when overclocking would not save a node.
+   */
+  couldOverclock: { nodes: number; clock: number } | null
+}
+
+/**
+ * Which nodes to hook a miner up to for a required extraction rate.
+ *
+ * Answers the practical question — "I need 270 iron ore a minute, what do I put
+ * a miner on?" — for each purity, so you can match it against what is near you.
+ */
+export function planNodes(miner: Miner, rate: number, purity: Purity): NodePlan | null {
+  if (rate <= 1e-9) return null
+
+  const base = (miner.allowLiquids ? miner.itemsPerMinute / 1000 : miner.itemsPerMinute) * PURITY[purity]
+  if (base <= 0) return null
+
+  // Enough nodes to hit the rate without overclocking, then underclock evenly so
+  // nothing over-extracts. Overclocking a miner costs Power Shards, so the
+  // shard-free arrangement is the one to lead with.
+  const nodes = Math.max(1, Math.ceil(rate / base - 1e-9))
+  const clock = rate / (nodes * base)
+
+  // Where one fewer node would still work within the 250% ceiling, it is worth
+  // knowing about — a spare node is sometimes harder to come by than shards.
+  const fewer = nodes - 1
+  const overclock = fewer > 0 ? rate / (fewer * base) : Infinity
+  const couldOverclock =
+    overclock <= MAX_CLOCK + 1e-9 ? { nodes: fewer, clock: overclock } : null
+
+  return {
+    miner,
+    purity,
+    nodes,
+    clock,
+    perNode: base * clock,
+    power: nodes * miner.powerConsumption * Math.pow(clock, POWER_EXPONENT),
+    couldOverclock,
+  }
+}
+
+/** Node options for a rate across every purity, fewest nodes first. */
+export function nodeOptions(miner: Miner, rate: number): NodePlan[] {
+  const purities: Purity[] = ['pure', 'normal', 'impure']
+  return purities
+    .map((purity) => planNodes(miner, rate, purity))
+    .filter((plan): plan is NodePlan => plan !== null)
+    .sort((a, b) => a.nodes - b.nodes)
+}
+
+/** The extractor that handles a given raw resource. */
+export function extractorFor(item: ItemId, minerTier?: string): Miner | null {
+  const liquid = isLiquid(item)
+  const candidates = gameData.miners.filter((m) => {
+    if (m.allowedResources.length > 0) return m.allowedResources.includes(item)
+    return liquid ? m.allowLiquids : m.allowSolids
+  })
+  if (candidates.length === 0) return null
+
+  const named = minerTier ? candidates.find((m) => m.className === minerTier) : undefined
+  // Default to the best tier, which is what most players will be using.
+  return named ?? [...candidates].sort((a, b) => b.itemsPerMinute - a.itemsPerMinute)[0]!
 }
 
 export interface SplitPlan {

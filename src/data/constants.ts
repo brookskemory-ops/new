@@ -13,23 +13,39 @@ export const gameData = rawData as GameData
 
 export interface BeltTier {
   name: string
-  /** Items per minute. */
+  /** Items per minute for belts, cubic metres per minute for pipes. */
   rate: number
+  /**
+   * The schematic that unlocks it, so the planner can tell which tiers you
+   * actually have. Verified against the recipe unlocks in the game data.
+   */
+  schematic: string
+  /** Milestone tier it arrives at, for display. */
+  tier: number
 }
 
 export const BELTS: BeltTier[] = [
-  { name: 'Mk.1', rate: 60 },
-  { name: 'Mk.2', rate: 120 },
-  { name: 'Mk.3', rate: 270 },
-  { name: 'Mk.4', rate: 480 },
-  { name: 'Mk.5', rate: 780 },
-  { name: 'Mk.6', rate: 1200 },
+  { name: 'Mk.1', rate: 60, schematic: 'Schematic_Tutorial3_C', tier: 0 },
+  { name: 'Mk.2', rate: 120, schematic: 'Schematic_3-2_C', tier: 2 },
+  { name: 'Mk.3', rate: 270, schematic: 'Schematic_5-3_C', tier: 4 },
+  { name: 'Mk.4', rate: 480, schematic: 'Schematic_6-1_C', tier: 5 },
+  { name: 'Mk.5', rate: 780, schematic: 'Schematic_7-2_C', tier: 7 },
+  { name: 'Mk.6', rate: 1200, schematic: 'Schematic_9-5_C', tier: 9 },
 ]
 
 export const PIPES: BeltTier[] = [
-  { name: 'Mk.1', rate: 300 },
-  { name: 'Mk.2', rate: 600 },
+  { name: 'Mk.1', rate: 300, schematic: 'Schematic_3-1_C', tier: 3 },
+  { name: 'Mk.2', rate: 600, schematic: 'Schematic_6-5_C', tier: 6 },
 ]
+
+/**
+ * The best belt the player has unlocked. Mk.1 is the floor — you always have it
+ * by the time anything needs belting.
+ */
+export function bestUnlockedBelt(unlocked: ReadonlySet<string>): BeltTier {
+  const available = BELTS.filter((belt) => unlocked.has(belt.schematic))
+  return available[available.length - 1] ?? BELTS[0]!
+}
 
 /** Multiplier applied to a miner's base rate by node purity. */
 export const PURITY = {

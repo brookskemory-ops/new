@@ -18,7 +18,10 @@ export interface PlanState {
   respectUnlocks: boolean
   recipeChoices: Record<ItemId, RecipeId>
   imported: ItemId[]
-  /** Best belt tier available, e.g. "Mk.3". Caps what the planner proposes. */
+  /**
+   * Best belt tier available, e.g. "Mk.3", or "auto" to follow whatever the
+   * Unlocks tab says you have. Caps what the planner proposes.
+   */
   beltTier: string
 }
 
@@ -29,7 +32,7 @@ export const DEFAULT_PLAN: PlanState = {
   respectUnlocks: true,
   recipeChoices: {},
   imported: [],
-  beltTier: 'Mk.6',
+  beltTier: 'auto',
 }
 
 /**

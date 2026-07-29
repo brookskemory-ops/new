@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { BELTS, gameData, itemsById, recipesById, schematicByRecipe } from '../data/constants'
+import {
+  BELTS,
+  bestUnlockedBelt,
+  gameData,
+  itemsById,
+  recipesById,
+  schematicByRecipe,
+} from '../data/constants'
 import {
   basePower,
   inputPerMachine,
@@ -14,7 +21,11 @@ import { fuelPerMinute, planFuelChain, planGenerators, waterPerMinute } from './
 import {
   beltFor,
   describeBelt,
+  extractorFor,
+  isLiquid,
   minerOutput,
+  nodeOptions,
+  planNodes,
   planSplit,
   planThroughput,
   supportBuildingFor,
@@ -537,11 +548,97 @@ describe('logistics', () => {
 
   it('flags when a miner overflows the chosen belt', () => {
     const mk3 = gameData.miners.find((m) => m.className === 'Desc_MinerMk3_C')!
-    const output = minerOutput(mk3, 'pure', 1, { name: 'Mk.5', rate: 780 })
+    const output = minerOutput(mk3, 'pure', 1, BELTS.find((b) => b.name === 'Mk.5')!)
     expect(output.overflow).toBeUndefined()
 
-    const overflowing = minerOutput(mk3, 'pure', 2.5, { name: 'Mk.5', rate: 780 })
+    const overflowing = minerOutput(mk3, 'pure', 2.5, BELTS.find((b) => b.name === 'Mk.5')!)
     expect(overflowing.overflow).toContain('exceeds')
+  })
+
+  it('picks the belt tier the player has actually unlocked', () => {
+    const mk3 = BELTS.find((b) => b.name === 'Mk.3')!
+    expect(bestUnlockedBelt(new Set([mk3.schematic])).name).toBe('Mk.3')
+    // Ticking a later milestone wins even if earlier ones are missing.
+    expect(bestUnlockedBelt(new Set(BELTS.map((b) => b.schematic))).name).toBe('Mk.6')
+    // Mk.1 is the floor: you always have it.
+    expect(bestUnlockedBelt(new Set()).name).toBe('Mk.1')
+  })
+
+  it('plans nodes for a required extraction rate without needing shards', () => {
+    const mk2 = gameData.miners.find((m) => m.className === 'Desc_MinerMk2_C')!
+    // Mk.2 on a normal node is 120/min, so 270/min takes three at 75%.
+    const normal = planNodes(mk2, 270, 'normal')!
+    expect(normal.nodes).toBe(3)
+    close(normal.clock, 0.75)
+    close(normal.perNode, 90)
+
+    // Pure doubles to 240/min, so two nodes at 56.25%.
+    const pure = planNodes(mk2, 270, 'pure')!
+    expect(pure.nodes).toBe(2)
+    close(pure.clock, 270 / 480)
+  })
+
+  it('never over-extracts: node output always matches demand exactly', () => {
+    const mk1 = gameData.miners.find((m) => m.className === 'Desc_MinerMk1_C')!
+    for (const rate of [10, 60, 61, 150, 300, 901]) {
+      for (const purity of ['impure', 'normal', 'pure'] as const) {
+        const plan = planNodes(mk1, rate, purity)!
+        close(plan.nodes * plan.perNode, rate, 1e-6)
+      }
+    }
+  })
+
+  it('leads with an arrangement that needs no power shards', () => {
+    const mk1 = gameData.miners.find((m) => m.className === 'Desc_MinerMk1_C')!
+    for (const rate of [10, 61, 150, 500, 901]) {
+      for (const purity of ['impure', 'normal', 'pure'] as const) {
+        expect(planNodes(mk1, rate, purity)!.clock).toBeLessThanOrEqual(1 + 1e-9)
+      }
+    }
+  })
+
+  it('mentions saving a node by overclocking, when that is legal', () => {
+    const mk2 = gameData.miners.find((m) => m.className === 'Desc_MinerMk2_C')!
+    // 270/min over two pure nodes at 56.25%, or one pure node at 112.5%.
+    const pure = planNodes(mk2, 270, 'pure')!
+    expect(pure.couldOverclock).toEqual({ nodes: 1, clock: 270 / 240 })
+
+    // A single node has nothing to save, so there is nothing to suggest.
+    expect(planNodes(mk2, 100, 'pure')!.couldOverclock).toBeNull()
+  })
+
+  it('never suggests an overclock above the 250% ceiling', () => {
+    const mk1 = gameData.miners.find((m) => m.className === 'Desc_MinerMk1_C')!
+    for (const rate of [10, 61, 150, 500, 901]) {
+      for (const purity of ['impure', 'normal', 'pure'] as const) {
+        const over = planNodes(mk1, rate, purity)!.couldOverclock
+        if (over) expect(over.clock).toBeLessThanOrEqual(2.5 + 1e-9)
+      }
+    }
+  })
+
+  it('offers node options ordered by how many nodes they take', () => {
+    const mk2 = gameData.miners.find((m) => m.className === 'Desc_MinerMk2_C')!
+    const options = nodeOptions(mk2, 270)
+    expect(options.length).toBeGreaterThan(1)
+    expect(options[0]!.purity).toBe('pure')
+    for (let i = 1; i < options.length; i++) {
+      expect(options[i]!.nodes).toBeGreaterThanOrEqual(options[i - 1]!.nodes)
+    }
+  })
+
+  it('matches each raw resource to an extractor that handles it', () => {
+    for (const item of gameData.resources) {
+      const extractor = extractorFor(item)
+      expect(extractor, `no extractor for ${item}`).not.toBeNull()
+      if (isLiquid(item)) expect(extractor!.allowLiquids).toBe(true)
+      else expect(extractor!.allowSolids).toBe(true)
+    }
+  })
+
+  it('has nothing to plan for a zero rate', () => {
+    const mk1 = gameData.miners.find((m) => m.className === 'Desc_MinerMk1_C')!
+    expect(planNodes(mk1, 0, 'normal')).toBeNull()
   })
 
   it('describes clean splits and flags awkward ones', () => {

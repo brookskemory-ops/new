@@ -15,10 +15,10 @@ import {
   Warning,
   fmt,
 } from '../components/ui'
-import { BELTS, itemName, machineName } from '../data/constants'
+import { BELTS, bestUnlockedBelt, itemName, machineName } from '../data/constants'
 import type { ItemId, RecipeId } from '../data/types'
 import { formatClock, solveEfficiency } from '../engine/clock'
-import { beltFor, describeBelt, isLiquid } from '../engine/logistics'
+import { beltFor, describeBelt, extractorFor, isLiquid, nodeOptions } from '../engine/logistics'
 import { availableRecipes, solve, suggestAlternates } from '../engine/solve'
 import type { TreeNode } from '../engine/solve'
 import type { UnlockState } from '../state/useUnlocks'
@@ -46,6 +46,8 @@ export function Planner({ unlocks, onGoTo }: { unlocks: UnlockState; onGoTo: (ta
   }
   const { target, rate, creditByproducts, respectUnlocks } = plan
   const [copied, setCopied] = useState(false)
+  // Build order is the default: it matches the sequence you place machines in.
+  const [buildOrder, setBuildOrder] = useState(true)
 
   const imported = useMemo(() => new Set(plan.imported), [plan.imported])
 
@@ -89,7 +91,25 @@ export function Planner({ unlocks, onGoTo }: { unlocks: UnlockState; onGoTo: (ta
   const totalRaw = [...result.rawResources.values()].reduce((a, b) => a + b, 0)
   const totalMachines = [...result.machineCounts.values()].reduce((a, b) => a + b, 0)
 
-  const beltRuns = useMemo(() => collectBeltRuns(result.tree, plan.beltTier), [result, plan.beltTier])
+  // "auto" follows the Unlocks tab. With nothing ticked there is nothing to go
+  // on, so everything is assumed available.
+  const unlockedBelt = bestUnlockedBelt(unlocks.schematics)
+  const beltTier =
+    plan.beltTier === 'auto'
+      ? unlocks.trackingDisabled
+        ? BELTS[BELTS.length - 1]!.name
+        : unlockedBelt.name
+      : plan.beltTier
+
+  // A manual choice can outrun the milestones actually ticked off.
+  const chosenBelt = BELTS.find((b) => b.name === beltTier)
+  const beltNotUnlocked =
+    !unlocks.trackingDisabled &&
+    plan.beltTier !== 'auto' &&
+    chosenBelt !== undefined &&
+    !unlocks.schematics.has(chosenBelt.schematic)
+
+  const beltRuns = useMemo(() => collectBeltRuns(result.tree, beltTier), [result, beltTier])
   const parallelRuns = beltRuns.filter((run) => run.belt?.needsParallel).length
 
   return (
@@ -141,17 +161,33 @@ export function Planner({ unlocks, onGoTo }: { unlocks: UnlockState; onGoTo: (ta
 
             <Field
               label="Best belt you have"
-              hint="Caps what the planner proposes; anything faster runs in parallel lines."
+              hint={
+                plan.beltTier === 'auto'
+                  ? unlocks.trackingDisabled
+                    ? 'Nothing ticked on Unlocks, so every tier is assumed available.'
+                    : `Following your unlocks: ${unlockedBelt.name} (tier ${unlockedBelt.tier}).`
+                  : 'Anything faster than this runs as parallel lines.'
+              }
             >
               <Select
                 value={plan.beltTier}
                 onChange={(value) => plan.set('beltTier', value)}
-                options={BELTS.map((belt) => ({
-                  value: belt.name,
-                  label: `Conveyor ${belt.name} — ${belt.rate}/min`,
-                }))}
+                options={[
+                  { value: 'auto', label: 'Match my unlocks' },
+                  ...BELTS.map((belt) => ({
+                    value: belt.name,
+                    label: `Conveyor ${belt.name} — ${belt.rate}/min`,
+                  })),
+                ]}
               />
             </Field>
+
+            {beltNotUnlocked && chosenBelt && (
+              <p className="-mt-2 text-xs text-amber-400">
+                You haven't unlocked {chosenBelt.name} yet — it arrives at tier {chosenBelt.tier}.
+                The plan below assumes you have it.
+              </p>
+            )}
 
             <label className="flex items-center gap-2 text-sm text-slate-300">
               <input
@@ -207,7 +243,7 @@ export function Planner({ unlocks, onGoTo }: { unlocks: UnlockState; onGoTo: (ta
 
         <Panel
           title="Belts & pipes"
-          subtitle={`Every run in the chain, at ${plan.beltTier} and below`}
+          subtitle={`Every run in the chain, at ${beltTier} and below`}
           help={
             <>
               <p>
@@ -225,25 +261,40 @@ export function Planner({ unlocks, onGoTo }: { unlocks: UnlockState; onGoTo: (ta
           {parallelRuns > 0 && (
             <p className="mb-3 rounded border border-amber-900/60 bg-amber-950/30 px-2 py-1.5 text-xs text-amber-300">
               {parallelRuns} run{parallelRuns === 1 ? '' : 's'} exceed{parallelRuns === 1 ? 's' : ''}{' '}
-              a single {plan.beltTier} belt and will need splitting across parallel lines.
+              a single {beltTier} belt and will need splitting across parallel lines.
             </p>
           )}
           <BeltList runs={beltRuns} />
         </Panel>
 
-        <Panel title="Raw resources" subtitle="What the map has to supply">
-          <RateList entries={result.rawResources} beltTier={plan.beltTier} />
+        <Panel
+          title="Raw resources"
+          subtitle="What the map has to supply, and what to put a miner on"
+          help={
+            <>
+              <p>
+                For each resource, the node combinations that supply the rate. Fewer, purer nodes
+                is usually the easier build; more impure ones may be what's actually near you.
+              </p>
+              <p>
+                Clocks are set so nothing over-extracts — a miner running at 62.5% is matching your
+                demand, not wasting a node.
+              </p>
+            </>
+          }
+        >
+          <RawResourceList entries={result.rawResources} beltTier={beltTier} />
         </Panel>
 
         {result.imports.size > 0 && (
           <Panel title="Imported" subtitle="Shipped in from another factory">
-            <RateList entries={result.imports} />
+            <RateList entries={result.imports} beltTier={beltTier} />
           </Panel>
         )}
 
         {result.surplus.size > 0 && (
           <Panel title="Surplus" subtitle="Byproducts you must sink or store">
-            <RateList entries={result.surplus} />
+            <RateList entries={result.surplus} beltTier={beltTier} />
           </Panel>
         )}
 
@@ -270,8 +321,37 @@ export function Planner({ unlocks, onGoTo }: { unlocks: UnlockState; onGoTo: (ta
 
         <Panel
           title="Production chain"
-          subtitle="Each row is one step. Machine counts are exact — see the Efficiency tab for clock speeds."
+          subtitle={
+            buildOrder
+              ? 'Build order: raw resources at the top, working down to the finished item.'
+              : 'Starting from the finished item and breaking it down into what it needs.'
+          }
         >
+          <div className="mb-3 flex items-center gap-1 border-b border-slate-800 pb-3">
+            <span className="mr-1 text-xs text-slate-500">Read as</span>
+            {(
+              [
+                [true, 'Build order', 'Raw resources first, finished item last'],
+                [false, 'Breakdown', 'Finished item first, raw resources last'],
+              ] as const
+            ).map(([value, label, title]) => (
+              <button
+                key={label}
+                type="button"
+                title={title}
+                aria-pressed={buildOrder === value}
+                onClick={() => setBuildOrder(value)}
+                className={`rounded px-2 py-1 text-xs font-medium transition ${
+                  buildOrder === value
+                    ? 'bg-ficsit-600 text-white'
+                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           {result.tree.recipe || result.tree.leafReason ? (
             <TreeView
               node={result.tree}
@@ -279,7 +359,8 @@ export function Planner({ unlocks, onGoTo }: { unlocks: UnlockState; onGoTo: (ta
               onSetRecipe={setRecipe}
               onToggleImport={toggleImport}
               imported={imported}
-              beltTier={plan.beltTier}
+              beltTier={beltTier}
+              buildOrder={buildOrder}
             />
           ) : (
             <Empty>Nothing to build — pick a target item.</Empty>
@@ -393,6 +474,74 @@ function RateList({
   )
 }
 
+/**
+ * Raw resources, each with the node combinations that would supply it. This is
+ * the bridge between a plan on screen and a spot on the map.
+ */
+function RawResourceList({
+  entries,
+  beltTier,
+}: {
+  entries: ReadonlyMap<ItemId, number>
+  beltTier: string
+}) {
+  const sorted = [...entries].filter(([, rate]) => rate > 1e-6).sort((a, b) => b[1] - a[1])
+  if (sorted.length === 0) return <Empty>None</Empty>
+
+  return (
+    <ul className="space-y-3 text-sm">
+      {sorted.map(([item, rate]) => {
+        const run = beltFor(rate, isLiquid(item), beltTier)
+        const extractor = extractorFor(item)
+        const options = extractor ? nodeOptions(extractor, rate).slice(0, 3) : []
+
+        return (
+          <li key={item}>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="font-medium text-slate-200">{itemName(item)}</span>
+              <span className="text-right">
+                <span className="tabular text-slate-100">{fmt(rate, 2)}</span>
+                <span className="ml-1 text-xs text-slate-500">
+                  /min{run && ` · ${describeBelt(run)}`}
+                </span>
+              </span>
+            </div>
+
+            {options.length > 0 ? (
+              <ul className="mt-1 space-y-0.5">
+                {options.map((option) => (
+                  <li
+                    key={option.purity}
+                    className="flex items-baseline justify-between gap-2 text-xs"
+                  >
+                    <span className="text-slate-400">
+                      {option.nodes}× <span className="text-slate-300">{option.purity}</span>{' '}
+                      {option.nodes === 1 ? 'node' : 'nodes'}
+                    </span>
+                    <span className="tabular text-slate-500">
+                      {option.miner.name.replace('Miner ', '')} @ {formatClock(option.clock)}
+                      {option.couldOverclock && (
+                        <span
+                          className="ml-1 text-slate-600"
+                          title={`Or ${option.couldOverclock.nodes} node${option.couldOverclock.nodes === 1 ? '' : 's'} at ${formatClock(option.couldOverclock.clock)}, which needs Power Shards`}
+                        >
+                          (or {option.couldOverclock.nodes} overclocked)
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1 text-xs text-slate-600">No extractor handles this directly.</p>
+            )}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 /** One belt or pipe run: a link in the chain that physically has to be built. */
 interface BeltRunRow {
   item: ItemId
@@ -474,6 +623,7 @@ function TreeView({
   onToggleImport,
   imported,
   beltTier,
+  buildOrder,
 }: {
   node: TreeNode
   options: Parameters<typeof solve>[2]
@@ -481,6 +631,7 @@ function TreeView({
   onToggleImport: (item: ItemId) => void
   imported: ReadonlySet<ItemId>
   beltTier: string
+  buildOrder: boolean
 }) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
 
@@ -502,9 +653,16 @@ function TreeView({
     const isImported = imported.has(current.item)
     const belt = beltFor(current.rate, isLiquid(current.item), beltTier)
 
-    return (
-      <li key={key}>
-        <div className="group flex flex-wrap items-center gap-x-3 gap-y-1 rounded px-2 py-1.5 transition hover:bg-slate-800/40">
+    // Nesting draws the hierarchy, so depth needs no inline indentation and deep
+    // chains cannot push a row off the side of the panel.
+    const children = hasChildren ? (
+      <ul className="ml-[0.65rem] border-l border-slate-800 pl-3">
+        {current.children.map((child, index) => render(child, `${key}.${index}`))}
+      </ul>
+    ) : null
+
+    const row = (
+      <div className="group flex flex-wrap items-center gap-x-3 gap-y-1 rounded px-2 py-1.5 transition hover:bg-slate-800/40">
           {/* Identity: what this step makes and how much of it. */}
           <div className="flex min-w-0 flex-1 items-center gap-2">
             {hasChildren ? (
@@ -609,7 +767,10 @@ function TreeView({
             )}
           </div>
         </div>
+    )
 
+    const notes = (
+      <>
         {current.creditedRate !== undefined && (
           <p className="ml-8 text-xs text-emerald-400/90">
             {fmt(current.grossRate ?? 0, 2)}/min needed, {fmt(current.creditedRate, 2)}/min of it
@@ -623,13 +784,27 @@ function TreeView({
             {current.byproducts.map((b) => `${itemName(b.item)} ${fmt(b.rate, 2)}/min`).join(', ')}
           </p>
         )}
+      </>
+    )
 
-        {hasChildren && !isCollapsed && (
-          // Nesting draws the hierarchy, so depth needs no inline indentation and
-          // deep chains cannot push the row off the side of the panel.
-          <ul className="ml-[0.65rem] border-l border-slate-800 pl-3">
-            {current.children.map((child, index) => render(child, `${key}.${index}`))}
-          </ul>
+    const expanded = hasChildren && !isCollapsed ? children : null
+
+    // Build order puts a step's inputs above it, so reading top to bottom walks
+    // from raw ore up to the finished item — the order you actually build in.
+    return (
+      <li key={key}>
+        {buildOrder ? (
+          <>
+            {expanded}
+            {row}
+            {notes}
+          </>
+        ) : (
+          <>
+            {row}
+            {notes}
+            {expanded}
+          </>
         )}
       </li>
     )
