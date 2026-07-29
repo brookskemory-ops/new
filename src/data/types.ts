@@ -84,6 +84,16 @@ export interface Miner {
    * report thousandths of a m³, so divide by 1000 for m³/min.
    */
   itemsPerMinute: number
+  /** MW at 100% clock. The Resource Well Extractor draws 0 — its Pressurizer pays the cost. */
+  powerConsumption: number
+}
+
+/** Extractors that support production but run no recipe of their own. */
+export interface SupportBuilding {
+  className: string
+  name: string
+  /** MW at 100% clock. */
+  powerConsumption: number
 }
 
 export interface GameData {
@@ -95,6 +105,7 @@ export interface GameData {
   schematics: Schematic[]
   generators: Generator[]
   miners: Miner[]
+  supportBuildings: SupportBuilding[]
   /** Item ids that can be extracted straight from the map. */
   resources: ItemId[]
 }

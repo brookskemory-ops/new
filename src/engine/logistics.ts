@@ -3,7 +3,7 @@
  */
 import { BELTS, PIPES, PURITY, gameData, itemsById } from '../data/constants'
 import type { BeltTier, Purity } from '../data/constants'
-import type { ItemId, Miner } from '../data/types'
+import type { ItemId, Miner, SupportBuilding } from '../data/types'
 import { POWER_EXPONENT } from '../data/constants'
 
 export interface ThroughputPlan {
@@ -51,15 +51,6 @@ export interface MinerOutput {
   overflow?: string
 }
 
-/** Power draw of each extractor at 100% clock. Not present in the upstream data. */
-const MINER_POWER: Record<string, number> = {
-  Desc_MinerMk1_C: 5,
-  Desc_MinerMk2_C: 15,
-  Desc_MinerMk3_C: 45,
-  Desc_OilPump_C: 40,
-  Desc_FrackingExtractor_C: 150,
-}
-
 /**
  * Extraction rate for a node, given the miner tier, node purity and clock speed —
  * and whether the belt you plan to use can actually keep up.
@@ -77,7 +68,7 @@ export function minerOutput(
   const tiers = miner.allowLiquids ? PIPES : BELTS
   const belt = beltTier ?? tiers.find((tier) => rate <= tier.rate + 1e-9) ?? null
 
-  const power = (MINER_POWER[miner.className] ?? 0) * Math.pow(clock, POWER_EXPONENT)
+  const power = miner.powerConsumption * Math.pow(clock, POWER_EXPONENT)
 
   return {
     miner,
@@ -91,6 +82,16 @@ export function minerOutput(
         ? `${round(rate)}/min exceeds ${belt.name} (${belt.rate}/min) — ${round(rate - belt.rate)}/min would back up.`
         : undefined,
   }
+}
+
+/**
+ * The building that actually pays the power bill for an extractor that reports
+ * none of its own. A Resource Well is one 150 MW Pressurizer driving several
+ * free Extractors, so quoting the Extractor alone understates the well.
+ */
+export function supportBuildingFor(miner: Miner): SupportBuilding | null {
+  if (miner.className !== 'Desc_FrackingExtractor_C') return null
+  return gameData.supportBuildings.find((b) => b.className === 'Desc_FrackingSmasher_C') ?? null
 }
 
 /** Solid-ore miners, ordered by tier. */

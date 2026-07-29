@@ -5,7 +5,14 @@ import { Field, NumberInput, Panel, Select, Stat, Warning, fmt } from '../compon
 import { BELTS, PIPES, itemName } from '../data/constants'
 import type { Purity } from '../data/constants'
 import { formatClock } from '../engine/clock'
-import { liquidExtractors, minerOutput, planSplit, planThroughput, solidMiners } from '../engine/logistics'
+import {
+  liquidExtractors,
+  minerOutput,
+  planSplit,
+  planThroughput,
+  solidMiners,
+  supportBuildingFor,
+} from '../engine/logistics'
 
 export function Logistics() {
   return (
@@ -98,6 +105,7 @@ function MinerCard() {
     () => minerOutput(miner, purity, clock / 100),
     [miner, purity, clock],
   )
+  const support = supportBuildingFor(miner)
 
   return (
     <Panel title="Extractor output" subtitle="Node purity × miner tier × clock speed.">
@@ -142,6 +150,13 @@ function MinerCard() {
         </div>
 
         {output.overflow && <Warning>{output.overflow}</Warning>}
+
+        {support && (
+          <p className="text-xs text-amber-400">
+            The {miner.name} itself draws no power — the {support.name} driving the well costs{' '}
+            {support.powerConsumption} MW, and one of them feeds every extractor on that well.
+          </p>
+        )}
 
         <p className="text-xs text-slate-500">
           Extracts: {miner.allowedResources.length > 0

@@ -4,7 +4,7 @@
  */
 import { useMemo, useState } from 'react'
 
-import { Field, NumberInput, Panel, Select, Stat, Warning, fmt } from '../components/ui'
+import { Field, NumberInput, Panel, Select, Stat, fmt } from '../components/ui'
 import { MAX_CLOCK, SOMERSLOOP_SLOTS, gameData, itemName, machineName } from '../data/constants'
 import type { RecipeId } from '../data/types'
 import {
@@ -115,8 +115,6 @@ export function Efficiency() {
             <Stat label="Output" value={fmt(targetOutput, 3)} unit="/min" />
             <Stat label="Machines needed" value={fmt(solution.exactMachines, 4)} />
           </div>
-
-          {solution.warning && <Warning>{solution.warning}</Warning>}
 
           <div className="space-y-2">
             {solution.options.map((option) => (

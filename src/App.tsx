@@ -21,7 +21,9 @@ const TABS = [
 type TabId = (typeof TABS)[number]['id']
 
 function tabFromHash(): TabId {
-  const hash = window.location.hash.replace('#', '')
+  // The planner appends its shareable payload as `#planner:<data>`, so take the
+  // part before the colon.
+  const hash = window.location.hash.replace('#', '').split(':')[0] ?? ''
   return TABS.some((tab) => tab.id === hash) ? (hash as TabId) : 'planner'
 }
 

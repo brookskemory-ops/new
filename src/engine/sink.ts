@@ -6,10 +6,31 @@ import type { Item, ItemId } from '../data/types'
 import { solve } from './solve'
 import type { SolveOptions } from './solve'
 
-/** Coupon cost climbs each time; these are the first ten thresholds in points. */
-export const COUPON_THRESHOLDS = [
-  1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000, 512000,
-] as const
+/** The first three coupons are a flat introductory price. */
+const INTRO_COUPON_COST = 500
+const INTRO_COUPONS = 3
+
+/** Past coupon 2,998 the price stops climbing and sits at this figure forever. */
+const MAX_COUPON_COST = 249_501_250
+const LAST_RISING_COUPON = 2998
+
+/**
+ * Points needed for the n-th coupon (1-indexed).
+ *
+ * Coupons come in groups of three, and the price climbs quadratically by group
+ * rather than doubling: 500, 500, 500, then 1250, 1250, 1250, then 2000 and so on.
+ */
+export function couponCost(n: number): number {
+  const index = Math.max(1, Math.floor(n))
+  if (index <= INTRO_COUPONS) return INTRO_COUPON_COST
+  if (index > LAST_RISING_COUPON) return MAX_COUPON_COST
+  return 250 * Math.pow(Math.ceil(index / 3) - 1, 2) + 1000
+}
+
+/** The first ten coupon prices, for the reference table on the Sink tab. */
+export const COUPON_THRESHOLDS: readonly number[] = Array.from({ length: 10 }, (_, i) =>
+  couponCost(i + 1),
+)
 
 export interface SinkRanking {
   item: Item
@@ -68,8 +89,7 @@ export function rankSinkables(options: SolveOptions = {}, limit = 40): SinkRanki
 
 /** Points needed for the next coupon after `couponsAlreadyClaimed`. */
 export function nextCouponCost(couponsAlreadyClaimed: number): number {
-  const index = Math.min(couponsAlreadyClaimed, COUPON_THRESHOLDS.length - 1)
-  return COUPON_THRESHOLDS[index] ?? COUPON_THRESHOLDS[COUPON_THRESHOLDS.length - 1]!
+  return couponCost(Math.max(0, couponsAlreadyClaimed) + 1)
 }
 
 /** Minutes to earn the next coupon at a given points-per-minute rate. */

@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react'
 
 import { Field, NumberInput, Panel, Stat, fmt } from '../components/ui'
-import { COUPON_THRESHOLDS, minutesToNextCoupon, nextCouponCost, rankSinkables } from '../engine/sink'
+import { couponCost, minutesToNextCoupon, nextCouponCost, rankSinkables } from '../engine/sink'
 import type { UnlockState } from '../state/useUnlocks'
 
 export function Sink({ unlocks }: { unlocks: UnlockState }) {
@@ -15,6 +15,12 @@ export function Sink({ unlocks }: { unlocks: UnlockState }) {
   )
 
   const minutes = minutesToNextCoupon(pointsPerMinute, couponsClaimed)
+
+  // A window around where you actually are, rather than always coupons 1-10.
+  const curve = useMemo(() => {
+    const first = Math.max(1, couponsClaimed - 1)
+    return Array.from({ length: 12 }, (_, i) => ({ n: first + i, cost: couponCost(first + i) }))
+  }, [couponsClaimed])
 
   return (
     <div className="grid gap-4 lg:grid-cols-[22rem_1fr]">
@@ -43,16 +49,19 @@ export function Sink({ unlocks }: { unlocks: UnlockState }) {
           </div>
         </Panel>
 
-        <Panel title="Coupon cost curve" subtitle="Each coupon costs double the last">
+        <Panel
+          title="Coupon cost curve"
+          subtitle="Coupons come in groups of three; the price climbs quadratically by group"
+        >
           <ul className="space-y-1 text-sm">
-            {COUPON_THRESHOLDS.map((cost, index) => (
+            {curve.map(({ n, cost }) => (
               <li
-                key={cost}
+                key={n}
                 className={`flex justify-between ${
-                  index === couponsClaimed ? 'text-ficsit-400' : 'text-slate-400'
+                  n === couponsClaimed + 1 ? 'text-ficsit-400' : 'text-slate-400'
                 }`}
               >
-                <span>Coupon {index + 1}</span>
+                <span>Coupon {n}</span>
                 <span className="tabular">{cost.toLocaleString()}</span>
               </li>
             ))}

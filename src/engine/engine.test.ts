@@ -11,8 +11,8 @@ import {
 } from './clock'
 import { availableRecipes, chooseRecipe, solve } from './solve'
 import { fuelPerMinute, planFuelChain, planGenerators, waterPerMinute } from './power'
-import { minerOutput, planSplit, planThroughput } from './logistics'
-import { nextCouponCost, surplusValue } from './sink'
+import { minerOutput, planSplit, planThroughput, supportBuildingFor } from './logistics'
+import { couponCost, nextCouponCost, surplusValue } from './sink'
 
 const IRON_ORE = 'Desc_OreIron_C'
 const IRON_INGOT = 'Desc_IronIngot_C'
@@ -142,11 +142,28 @@ describe('efficiency solver', () => {
     close(result.options[0]!.power, cheapest)
   })
 
-  it('warns when the required clock exceeds 250%', () => {
-    const recipe = recipesById.get('Recipe_IronPlate_C')!
-    const result = solveEfficiency(recipe, 20)
-    expect(result.warning).toBeUndefined()
-    close(result.exactMachines, 1)
+  it('never proposes an even underclock above 100%, for any recipe or rate', () => {
+    // The even-underclock option is exactMachines/ceil(exactMachines) and so is
+    // always <= 100%. This replaces a test that asserted an unreachable warning
+    // stayed undefined, which it always did.
+    for (const recipe of gameData.recipes) {
+      for (const rate of [1, 7, 13.3, 100, 999, 100_000]) {
+        const even = solveEfficiency(recipe, rate).options[0]
+        if (!even) continue
+        expect(even.clock).toBeLessThanOrEqual(1 + 1e-9)
+        expect(even.shards).toBe(0)
+      }
+    }
+  })
+
+  it('keeps every proposed clock within the 250% ceiling', () => {
+    for (const recipe of gameData.recipes) {
+      for (const rate of [3, 55, 617]) {
+        for (const option of solveEfficiency(recipe, rate).options) {
+          expect(option.clock).toBeLessThanOrEqual(2.5 + 1e-9)
+        }
+      }
+    }
   })
 })
 
@@ -214,6 +231,48 @@ describe('production solver', () => {
     const result = solve(PLASTIC, 20, { creditByproducts: true })
     expect(result.warnings).toEqual([])
     expect(result.rawResources.get(CRUDE_OIL)).toBeGreaterThan(0)
+  })
+
+  it('reconciles tree leaves with the summary for every item, in both crediting modes', () => {
+    // The check that was missing: with byproduct crediting on, the tree used to
+    // show Water 90/min against a summary of 60/min for Aluminum Ingot.
+    for (const credit of [false, true]) {
+      for (const item of gameData.items) {
+        if (gameData.resources.includes(item.className)) continue
+        const result = solve(item.className, 60, { creditByproducts: credit })
+        if (result.warnings.length > 0) continue
+
+        const leaves = collectLeafRates(result.tree)
+        for (const [raw, summaryRate] of result.rawResources) {
+          const treeRate = leaves.get(raw) ?? 0
+          expect(
+            Math.abs(treeRate - summaryRate),
+            `${item.name} / ${raw} (credit=${credit}): tree ${treeRate} vs summary ${summaryRate}`,
+          ).toBeLessThan(1e-6)
+        }
+      }
+    }
+  })
+
+  it('shows the byproduct credit on the branch it applies to', () => {
+    const result = solve('Desc_AluminumIngot_C', 60, { creditByproducts: true })
+    close(result.rawResources.get(WATER)!, 60)
+
+    const leaves = collectLeafRates(result.tree)
+    close(leaves.get(WATER)!, 60)
+
+    // The credited branch still reports what it gross-consumed, so the saving is
+    // visible rather than silently absorbed.
+    const credited = findNodes(result.tree, (n) => n.creditedRate !== undefined)
+    expect(credited.length).toBeGreaterThan(0)
+    for (const node of credited) {
+      close(node.grossRate! - node.creditedRate!, node.rate)
+    }
+  })
+
+  it('leaves rates untouched when nothing is credited', () => {
+    const result = solve(REINFORCED_PLATE, 5, { creditByproducts: true })
+    expect(findNodes(result.tree, (n) => n.creditedRate !== undefined)).toEqual([])
   })
 
   it('terminates on every item in the game without warnings or hangs', () => {
@@ -388,6 +447,37 @@ describe('logistics', () => {
     close(minerOutput(pump, 'pure').rate, 240)
   })
 
+  it('takes extractor power from the dataset, not a hand-written table', () => {
+    for (const miner of gameData.miners) {
+      const output = minerOutput(miner, 'normal', 1)
+      expect(output.power).toBeCloseTo(miner.powerConsumption, 9)
+    }
+  })
+
+  it('charges the Resource Well Extractor no power, and its Pressurizer 150 MW', () => {
+    // The 150 MW belongs to the Pressurizer; quoting it per-extractor was a bug.
+    const extractor = gameData.miners.find((m) => m.className === 'Desc_FrackingExtractor_C')!
+    expect(extractor.powerConsumption).toBe(0)
+    close(minerOutput(extractor, 'normal').power, 0)
+
+    const support = supportBuildingFor(extractor)!
+    expect(support.className).toBe('Desc_FrackingSmasher_C')
+    expect(support.powerConsumption).toBe(150)
+
+    // Every other extractor pays its own way.
+    for (const miner of gameData.miners) {
+      if (miner.className === 'Desc_FrackingExtractor_C') continue
+      expect(supportBuildingFor(miner)).toBeNull()
+      expect(miner.powerConsumption).toBeGreaterThan(0)
+    }
+  })
+
+  it('scales extractor power by the clock exponent', () => {
+    const mk3 = gameData.miners.find((m) => m.className === 'Desc_MinerMk3_C')!
+    expect(mk3.powerConsumption).toBe(45)
+    close(minerOutput(mk3, 'normal', 2.5).power, 45 * Math.pow(2.5, 1.321929), 1e-6)
+  })
+
   it('flags when a miner overflows the chosen belt', () => {
     const mk3 = gameData.miners.find((m) => m.className === 'Desc_MinerMk3_C')!
     const output = minerOutput(mk3, 'pure', 1, { name: 'Mk.5', rate: 780 })
@@ -411,10 +501,37 @@ describe('logistics', () => {
 })
 
 describe('sink', () => {
-  it('knows the coupon thresholds', () => {
-    expect(nextCouponCost(0)).toBe(1000)
-    expect(nextCouponCost(1)).toBe(2000)
-    expect(nextCouponCost(3)).toBe(8000)
+  it('matches the published coupon costs', () => {
+    // Groups of three, climbing quadratically by group — not doubling.
+    expect([1, 2, 3].map(couponCost)).toEqual([500, 500, 500])
+    expect([4, 5, 6].map(couponCost)).toEqual([1250, 1250, 1250])
+    expect([7, 8, 9].map(couponCost)).toEqual([2000, 2000, 2000])
+    expect([10, 11, 12].map(couponCost)).toEqual([3250, 3250, 3250])
+  })
+
+  it('follows 250*(ceil(n/3)-1)^2+1000 past the introductory coupons', () => {
+    for (const n of [4, 17, 60, 199, 2998]) {
+      expect(couponCost(n)).toBe(250 * Math.pow(Math.ceil(n / 3) - 1, 2) + 1000)
+    }
+  })
+
+  it('flattens out after coupon 2998', () => {
+    expect(couponCost(2999)).toBe(249_501_250)
+    expect(couponCost(50_000)).toBe(249_501_250)
+  })
+
+  it('never reports a cheaper coupon than the one before it', () => {
+    for (let n = 2; n <= 3200; n++) {
+      expect(couponCost(n)).toBeGreaterThanOrEqual(couponCost(n - 1))
+    }
+  })
+
+  it('asks for the next coupon, not the one just claimed', () => {
+    expect(nextCouponCost(0)).toBe(500)
+    expect(nextCouponCost(3)).toBe(1250)
+    expect(nextCouponCost(9)).toBe(3250)
+    // The old table silently capped at ten; the formula keeps going.
+    expect(nextCouponCost(100)).toBe(couponCost(101))
   })
 
   it('values surplus byproducts at their sink rate', () => {
@@ -426,6 +543,20 @@ describe('sink', () => {
     close(surplusValue(new Map([[WATER, 100]])), itemsById.get(WATER)!.sinkPoints * 100)
   })
 })
+
+/** Every node in a tree matching a predicate. */
+function findNodes(
+  node: import('./solve').TreeNode,
+  predicate: (node: import('./solve').TreeNode) => boolean,
+): import('./solve').TreeNode[] {
+  const found: import('./solve').TreeNode[] = []
+  const walk = (current: import('./solve').TreeNode): void => {
+    if (predicate(current)) found.push(current)
+    current.children.forEach(walk)
+  }
+  walk(node)
+  return found
+}
 
 /** Sums the rates of every leaf item in a tree, for cross-checking the aggregate. */
 function collectLeafRates(node: import('./solve').TreeNode): Map<string, number> {

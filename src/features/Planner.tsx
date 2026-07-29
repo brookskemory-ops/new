@@ -2,26 +2,26 @@
 import { useMemo, useState } from 'react'
 
 import { ItemPicker } from '../components/ItemPicker'
-import { Count, Empty, Field, NumberInput, Panel, Stat, Warning, fmt } from '../components/ui'
-import { gameData, itemName, machineName, recipesById } from '../data/constants'
+import { Button, Count, Empty, Field, NumberInput, Panel, Stat, Warning, fmt } from '../components/ui'
+import { itemName, machineName } from '../data/constants'
 import type { ItemId, RecipeId } from '../data/types'
 import { formatClock, solveEfficiency } from '../engine/clock'
 import { isLiquid, planThroughput } from '../engine/logistics'
 import { availableRecipes, solve, suggestAlternates } from '../engine/solve'
 import type { TreeNode } from '../engine/solve'
 import type { UnlockState } from '../state/useUnlocks'
+import { usePlan } from '../state/usePlan'
 
 export function Planner({ unlocks }: { unlocks: UnlockState }) {
-  const [target, setTarget] = useState<ItemId>('Desc_IronPlateReinforced_C')
-  const [rate, setRate] = useState(30)
-  const [creditByproducts, setCreditByproducts] = useState(false)
-  const [respectUnlocks, setRespectUnlocks] = useState(true)
-  const [recipeChoices, setRecipeChoices] = useState<Record<ItemId, RecipeId>>({})
-  const [imported, setImported] = useState<ReadonlySet<ItemId>>(new Set())
+  const plan = usePlan()
+  const { target, rate, creditByproducts, respectUnlocks } = plan
+  const [copied, setCopied] = useState(false)
+
+  const imported = useMemo(() => new Set(plan.imported), [plan.imported])
 
   const options = useMemo(
     () => ({
-      recipeChoices,
+      recipeChoices: plan.recipeChoices,
       imported,
       creditByproducts,
       // With nothing ticked, unlock tracking would block every recipe, so it
@@ -29,28 +29,31 @@ export function Planner({ unlocks }: { unlocks: UnlockState }) {
       unlocked:
         respectUnlocks && !unlocks.trackingDisabled ? unlocks.unlockedRecipes : undefined,
     }),
-    [recipeChoices, imported, creditByproducts, respectUnlocks, unlocks],
+    [plan.recipeChoices, imported, creditByproducts, respectUnlocks, unlocks],
   )
 
   const result = useMemo(() => solve(target, rate, options), [target, rate, options])
 
   const suggestions = useMemo(() => suggestAlternates(result, options).slice(0, 5), [result, options])
 
-  const toggleImport = (item: ItemId): void => {
-    const next = new Set(imported)
-    if (next.has(item)) next.delete(item)
-    else next.add(item)
-    setImported(next)
-  }
+  const toggleImport = plan.toggleImport
 
   const setRecipe = (item: ItemId, recipe: RecipeId): void => {
-    setRecipeChoices((current) => {
-      const next = { ...current }
-      const auto = availableRecipes(item, options.unlocked)[0]
-      if (recipe === auto?.className) delete next[item]
-      else next[item] = recipe
-      return next
-    })
+    // Storing a choice that matches the default would only bloat the share link.
+    const auto = availableRecipes(item, options.unlocked)[0]
+    plan.setRecipe(item, recipe === auto?.className ? null : recipe)
+  }
+
+  const share = async (): Promise<void> => {
+    const url = plan.shareUrl()
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Clipboard access can be blocked; the URL bar already holds the same link.
+      window.prompt('Copy this link:', url)
+    }
   }
 
   const totalRaw = [...result.rawResources.values()].reduce((a, b) => a + b, 0)
@@ -62,10 +65,10 @@ export function Planner({ unlocks }: { unlocks: UnlockState }) {
         <Panel title="Target">
           <div className="space-y-3">
             <Field label="Item">
-              <ItemPicker value={target} onChange={setTarget} />
+              <ItemPicker value={target} onChange={(item) => plan.set('target', item)} />
             </Field>
             <Field label="Rate" hint={isLiquid(target) ? 'cubic metres per minute' : 'items per minute'}>
-              <NumberInput value={rate} onChange={setRate} min={0} />
+              <NumberInput value={rate} onChange={(value) => plan.set('rate', value)} min={0} />
             </Field>
 
             <label className="flex items-center gap-2 text-sm text-slate-300">
@@ -73,7 +76,7 @@ export function Planner({ unlocks }: { unlocks: UnlockState }) {
                 type="checkbox"
                 className="accent-ficsit-500"
                 checked={creditByproducts}
-                onChange={(e) => setCreditByproducts(e.target.checked)}
+                onChange={(e) => plan.set('creditByproducts', e.target.checked)}
               />
               Feed byproducts back in
             </label>
@@ -86,7 +89,7 @@ export function Planner({ unlocks }: { unlocks: UnlockState }) {
                 type="checkbox"
                 className="accent-ficsit-500"
                 checked={respectUnlocks}
-                onChange={(e) => setRespectUnlocks(e.target.checked)}
+                onChange={(e) => plan.set('respectUnlocks', e.target.checked)}
                 disabled={unlocks.trackingDisabled}
               />
               Only use what I have unlocked
@@ -96,6 +99,18 @@ export function Planner({ unlocks }: { unlocks: UnlockState }) {
                 Nothing ticked on the Unlocks tab yet, so every recipe is in play.
               </p>
             )}
+
+            <div className="flex items-center gap-2 pt-1">
+              <Button variant="primary" onClick={share}>
+                {copied ? 'Link copied' : 'Copy share link'}
+              </Button>
+              <Button variant="ghost" onClick={plan.reset}>
+                Reset
+              </Button>
+            </div>
+            <p className="-mt-2 text-xs text-slate-500">
+              Your plan is saved here and lives in the URL, so you can bookmark it or send it on.
+            </p>
           </div>
         </Panel>
 
@@ -316,6 +331,15 @@ function TreeView({
           <span className="font-medium text-slate-100">{itemName(current.item)}</span>
           <span className="tabular text-ficsit-400">{fmt(current.rate, 2)}/min</span>
 
+          {current.creditedRate !== undefined && (
+            <span
+              className="tabular text-xs text-emerald-400"
+              title={`This branch consumes ${fmt(current.grossRate ?? 0, 2)}/min, of which ${fmt(current.creditedRate, 2)}/min comes from a byproduct elsewhere in the plan.`}
+            >
+              ({fmt(current.grossRate ?? 0, 2)} − {fmt(current.creditedRate, 2)} from byproduct)
+            </span>
+          )}
+
           {current.recipe && (
             <>
               <span className="tabular text-xs text-slate-400">
@@ -393,8 +417,3 @@ function TreeView({
 
   return <ul className="text-sm">{render(node, 'root')}</ul>
 }
-
-/** Items that can actually be produced, for pickers that should exclude raw ore. */
-export const producibleItems = gameData.items.filter(
-  (item) => !gameData.resources.includes(item.className) && recipesById.size > 0,
-)

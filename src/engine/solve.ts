@@ -29,8 +29,12 @@ export interface SolveOptions {
 /** One node in the display tree. Items can appear more than once across branches. */
 export interface TreeNode {
   item: ItemId
-  /** Units per minute this branch needs. */
+  /** Units per minute this branch needs, net of any byproduct credit. */
   rate: number
+  /** Demand before byproduct crediting. Set only when a credit applied. */
+  grossRate?: number
+  /** How much of the gross a byproduct covered. Set only when a credit applied. */
+  creditedRate?: number
   recipe: Recipe | null
   /** Fractional machine count for this branch alone. */
   machines: number
@@ -145,7 +149,20 @@ export function solve(target: ItemId, targetRate: number, options: SolveOptions 
   }
 
   const aggregate = solveFlows(target, targetRate, recipeFor, isLeaf, creditByproducts, warnings)
-  const tree = buildTree(target, targetRate, recipeFor, isLeaf, warnings)
+
+  /**
+   * The share of an item's demand that genuinely had to be produced. Below 1 when
+   * byproducts covered part of it; the tree scales branches by this so its leaf
+   * totals reconcile with the summary instead of contradicting it.
+   */
+  const netFactor = (item: ItemId): number => {
+    const gross = aggregate.gross.get(item) ?? 0
+    if (gross <= EPSILON) return 1
+    const net = aggregate.net.get(item) ?? 0
+    return Math.min(1, Math.max(0, net / gross))
+  }
+
+  const tree = buildTree(target, targetRate, recipeFor, isLeaf, netFactor, warnings)
 
   const machineCounts = new Map<string, number>()
   let totalPower = 0
@@ -187,6 +204,10 @@ function solveFlows(
   raws: Map<ItemId, number>
   imports: Map<ItemId, number>
   surplus: Map<ItemId, number>
+  /** Total demand raised for each item, before any byproduct credit. */
+  gross: Map<ItemId, number>
+  /** The part of that demand that actually had to be produced or extracted. */
+  net: Map<ItemId, number>
 } {
   /** Outstanding demand per item. Negative means surplus available to consume. */
   const demand = new Map<ItemId, number>([[target, targetRate]])
@@ -194,6 +215,14 @@ function solveFlows(
   const imports = new Map<ItemId, number>()
   const machinesByRecipe = new Map<RecipeId, number>()
   const surplusMap = new Map<ItemId, number>()
+
+  // Gross counts every unit ever asked for; net counts only the units that had to
+  // be made or mined. They differ exactly where a byproduct covered the demand.
+  const gross = new Map<ItemId, number>([[target, targetRate]])
+  const net = new Map<ItemId, number>()
+  const addGross = (item: ItemId, rate: number): void => {
+    gross.set(item, (gross.get(item) ?? 0) + rate)
+  }
 
   let iterations = 0
   for (;;) {
@@ -217,6 +246,7 @@ function solveFlows(
 
     const outstanding = demand.get(next) ?? 0
     demand.set(next, 0)
+    net.set(next, (net.get(next) ?? 0) + outstanding)
 
     const leaf = isLeaf(next)
     if (leaf === 'raw') {
@@ -240,6 +270,7 @@ function solveFlows(
     for (const ingredient of recipe.ingredients) {
       const rate = machines * inputPerMachine(recipe, ingredient.item)
       demand.set(ingredient.item, (demand.get(ingredient.item) ?? 0) + rate)
+      addGross(ingredient.item, rate)
     }
 
     for (const product of recipe.products) {
@@ -281,18 +312,23 @@ function solveFlows(
     })
   }
 
-  return { steps, raws, imports, surplus: surplusMap }
+  return { steps, raws, imports, surplus: surplusMap, gross, net }
 }
 
 /**
  * Builds the display tree. Each branch carries its own share of the total, and a
  * repeated item under its own ancestry is cut off as a cycle rather than recursed.
+ *
+ * Branch rates are net of any byproduct credit, spread proportionally across the
+ * branches that consume the item, so the tree's leaves add up to the same raw
+ * resource totals the summary reports.
  */
 function buildTree(
   target: ItemId,
   targetRate: number,
   recipeFor: (item: ItemId) => Recipe | null,
   isLeaf: (item: ItemId) => TreeNode['leafReason'] | null,
+  netFactor: (item: ItemId) => number,
   warnings: string[],
 ): TreeNode {
   const reportedCycles = new Set<string>()
@@ -347,9 +383,16 @@ function buildTree(
       .map((p) => ({ item: p.item, rate: node.machines * outputPerMachine(recipe, p.item) }))
 
     const nextPath = new Set(path).add(item)
-    node.children = recipe.ingredients.map((ingredient) =>
-      build(ingredient.item, node.machines * inputPerMachine(recipe, ingredient.item), nextPath, depth + 1),
-    )
+    node.children = recipe.ingredients.map((ingredient) => {
+      const grossRate = node.machines * inputPerMachine(recipe, ingredient.item)
+      const factor = netFactor(ingredient.item)
+      const child = build(ingredient.item, grossRate * factor, nextPath, depth + 1)
+      if (factor < 1 - EPSILON) {
+        child.grossRate = grossRate
+        child.creditedRate = grossRate - child.rate
+      }
+      return child
+    })
 
     return node
   }

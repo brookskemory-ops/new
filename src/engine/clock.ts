@@ -91,8 +91,6 @@ export interface EfficiencySolution {
   /** Throughput the arrangement achieves, items/min. */
   throughput: number
   options: ClockOption[]
-  /** Set when the required clock is above 250% even at whole-machine counts. */
-  warning?: string
 }
 
 /**
@@ -122,12 +120,14 @@ export function solveEfficiency(
 
   // Option A: build the ceiling count and underclock every machine evenly. Costs
   // the least power because the exponent works in your favour below 100%.
+  // This clock is exactMachines/ceil(exactMachines), so it is always <= 100% and
+  // can never need a power shard.
   const evenClock = exactMachines / wholeMachines
   options.push({
     machines: wholeMachines,
     clock: evenClock,
     power: wholeMachines * powerAtClock(base, evenClock, 0, recipe.machine),
-    shards: evenClock <= 1 + 1e-9 ? 0 : shardsForClock(evenClock),
+    shards: 0,
     label: `${wholeMachines} machine${wholeMachines === 1 ? '' : 's'} at ${formatClock(evenClock)}`,
   })
 
@@ -164,12 +164,7 @@ export function solveEfficiency(
     }
   }
 
-  const warning =
-    evenClock > MAX_CLOCK + 1e-9
-      ? `Needs ${formatClock(evenClock)} which is above the 250% maximum.`
-      : undefined
-
-  return { exactMachines, throughput: targetRate, options, warning }
+  return { exactMachines, throughput: targetRate, options }
 }
 
 /** Formats a clock multiplier as the percentage the game shows, e.g. 0.6667 -> "66.6667%". */

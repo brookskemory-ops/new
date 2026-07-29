@@ -194,6 +194,12 @@ async function main(): Promise<void> {
     }))
     .sort((a, b) => a.powerProduction - b.powerProduction)
 
+  const buildingPower = new Map(
+    Object.values(raw.buildings).map(
+      (b) => [b.className, b.metadata?.powerConsumption ?? 0] as const,
+    ),
+  )
+
   const miners = Object.values(raw.miners).map((m) => ({
     className: m.className,
     name: buildingNames.get(m.className) ?? m.className,
@@ -202,7 +208,20 @@ async function main(): Promise<void> {
     allowSolids: m.allowSolids,
     // Extraction rate per minute at 100% clock on a normal-purity node.
     itemsPerMinute: (m.itemsPerCycle / m.extractCycleTime) * 60,
+    // Taken from the data rather than a hand-written table: the Resource Well
+    // Extractor really does draw 0 MW, with its 150 MW sitting on the Pressurizer.
+    powerConsumption: buildingPower.get(m.className) ?? 0,
   }))
+
+  // Extractors that feed or support miners but run no recipe of their own.
+  const SUPPORT_BUILDINGS = ['Desc_WaterPump_C', 'Desc_FrackingSmasher_C']
+  const supportBuildings = Object.values(raw.buildings)
+    .filter((b) => SUPPORT_BUILDINGS.includes(b.className))
+    .map((b) => ({
+      className: b.className,
+      name: b.name,
+      powerConsumption: b.metadata?.powerConsumption ?? 0,
+    }))
 
   const resources = Object.values(raw.resources).map((r) => r.item)
 
@@ -215,6 +234,7 @@ async function main(): Promise<void> {
     schematics,
     generators,
     miners,
+    supportBuildings,
     resources,
   }
 
