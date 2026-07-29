@@ -1,0 +1,33 @@
+{
+  "name": "satisfactory-companion",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Factory planner, efficiency solver and calculator suite for Satisfactory",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b --noEmit false --emitDeclarationOnly false",
+    "build:data": "tsx scripts/build-data.ts"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^26.1.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^6.0.4",
+    "playwright": "^1.62.0",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
+  }
+}
