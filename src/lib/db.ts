@@ -37,7 +37,126 @@ function connect(): Database.Database {
 function migrate(database: Database.Database) {
   const schemaPath = path.join(process.cwd(), "src", "lib", "schema.sql");
   database.exec(fs.readFileSync(schemaPath, "utf8"));
+  widenTransactionSources(database);
+  addLaterColumns(database);
   seedSystemRows(database);
+}
+
+/**
+ * Allow 'simplefin' in transactions.source on databases created before it
+ * existed.
+ *
+ * A CHECK constraint is part of the table definition and SQLite has no
+ * ALTER TABLE for it, so widening one means rebuilding the table: create the
+ * new shape, copy the rows, swap it in. This is SQLite's own documented
+ * procedure. It runs once — afterwards the stored SQL mentions 'simplefin' and
+ * this is skipped.
+ *
+ * Columns are matched by name rather than position, so the copy stays correct
+ * regardless of which later columns the old table happened to have.
+ */
+function widenTransactionSources(database: Database.Database) {
+  const table = database
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'transactions'")
+    .get() as { sql: string } | undefined;
+
+  if (!table || table.sql.includes("'simplefin'")) return;
+
+  const oldColumns = (
+    database.pragma("table_info(transactions)") as Array<{ name: string }>
+  ).map((info) => info.name);
+
+  // Foreign keys must be off for the drop-and-rename, and toggling them is not
+  // allowed inside a transaction — hence the ordering here.
+  database.pragma("foreign_keys = OFF");
+  try {
+    database.exec("BEGIN");
+
+    database.exec(`
+      CREATE TABLE transactions_migrated (
+        id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+        account_id            INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        category_id           INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+        date                  TEXT    NOT NULL,
+        amount_cents          INTEGER NOT NULL,
+        merchant              TEXT    NOT NULL DEFAULT '',
+        description           TEXT    NOT NULL DEFAULT '',
+        notes                 TEXT,
+        pending               INTEGER NOT NULL DEFAULT 0,
+        is_transfer           INTEGER NOT NULL DEFAULT 0,
+        source                TEXT    NOT NULL DEFAULT 'manual'
+                                      CHECK (source IN ('manual','plaid','csv','simplefin')),
+        plaid_transaction_id  TEXT UNIQUE,
+        category_locked       INTEGER NOT NULL DEFAULT 0,
+        created_at            TEXT    NOT NULL DEFAULT (datetime('now')),
+        updated_at            TEXT    NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+
+    const newColumns = (
+      database.pragma("table_info(transactions_migrated)") as Array<{ name: string }>
+    ).map((info) => info.name);
+    const shared = newColumns.filter((name) => oldColumns.includes(name));
+    const columnList = shared.map((name) => `"${name}"`).join(", ");
+
+    database.exec(
+      `INSERT INTO transactions_migrated (${columnList}) SELECT ${columnList} FROM transactions`,
+    );
+    database.exec("DROP TABLE transactions");
+    database.exec("ALTER TABLE transactions_migrated RENAME TO transactions");
+    database.exec(`
+      CREATE INDEX IF NOT EXISTS idx_tx_date     ON transactions(date DESC);
+      CREATE INDEX IF NOT EXISTS idx_tx_account  ON transactions(account_id);
+      CREATE INDEX IF NOT EXISTS idx_tx_category ON transactions(category_id);
+    `);
+
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  } finally {
+    database.pragma("foreign_keys = ON");
+  }
+}
+
+/**
+ * Columns added after the first release.
+ *
+ * `CREATE TABLE IF NOT EXISTS` does nothing to a table that already exists, so
+ * a database created by an earlier version would silently lack these. Each is
+ * added only when absent, which makes upgrading a no-op for a fresh database
+ * and non-destructive for an existing one.
+ *
+ * SQLite cannot add a UNIQUE column via ALTER TABLE, so uniqueness is enforced
+ * with a partial index instead — partial so the many NULL rows (everything not
+ * from SimpleFIN) don't collide with each other.
+ */
+function addLaterColumns(database: Database.Database) {
+  const columnExists = (table: string, column: string) =>
+    (database.pragma(`table_info(${table})`) as Array<{ name: string }>).some(
+      (info) => info.name === column,
+    );
+
+  const added: Array<[string, string, string]> = [
+    ["accounts", "simplefin_connection_id", "INTEGER REFERENCES simplefin_connections(id) ON DELETE CASCADE"],
+    ["accounts", "simplefin_account_id", "TEXT"],
+    ["transactions", "simplefin_transaction_id", "TEXT"],
+  ];
+
+  for (const [table, column, definition] of added) {
+    if (!columnExists(table, column)) {
+      database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
+  }
+
+  database.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_simplefin
+      ON accounts(simplefin_account_id)
+      WHERE simplefin_account_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_simplefin
+      ON transactions(simplefin_transaction_id)
+      WHERE simplefin_transaction_id IS NOT NULL;
+  `);
 }
 
 /* ------------------------------------------------------------------ */

@@ -5,8 +5,8 @@ categorize them, set budgets, sync your bank automatically, and get an AI
 read on where your money is going.
 
 Your data lives in a SQLite file on your disk. There is no account, no server,
-and nothing is uploaded — except the two optional integrations below, which you
-turn on yourself and which are described precisely so you know what leaves the
+and nothing is uploaded — except the optional integrations below, which you turn
+on yourself and which are described precisely so you know what leaves the
 machine.
 
 ---
@@ -63,7 +63,13 @@ anything your bank labels uselessly.
 
 ### 3. Link your bank for automatic sync (optional, paid)
 
-See [Bank linking](#bank-linking-plaid) below.
+Two options, both supported. **[SimpleFIN](#bank-sync-simplefin)** is the one
+built for individuals — no developer account, no business application, a couple
+of dollars a year. **[Plaid](#bank-sync-plaid)** is the industry standard but is
+aimed at companies, so it requires an application before it works with real
+banks.
+
+You can use either, or both, or neither.
 
 ---
 
@@ -110,7 +116,60 @@ budget you've never once hit is a budget you'll ignore.
 
 ---
 
-## Bank linking (Plaid)
+## Bank sync (SimpleFIN)
+
+Optional. Probably the one you want.
+
+SimpleFIN is an aggregator built for individuals rather than companies. There's
+no developer account, no business application, and **nothing goes in `.env`** —
+you link your banks on their site, paste a one-time token into the app, and
+you're done.
+
+### Setup
+
+1. Go to **[SimpleFIN Bridge](https://beta-bridge.simplefin.org/)** and create
+   an account.
+2. Connect your banks there.
+3. Create a **Setup Token** for this app.
+4. In Ledger: **Accounts → SimpleFIN → Connect**, paste the token, press
+   Connect.
+
+That's it. It immediately pulls up to a year of history, and after that
+**Sync now** fetches anything new.
+
+The Setup Token works exactly once. If you paste it twice, or it errors and you
+retry, generate a fresh one — the app will tell you if that's what happened.
+
+### What it costs
+
+SimpleFIN charges a small annual subscription (single-digit dollars per year at
+the time of writing) rather than a per-account monthly fee. Check their site
+for the current number.
+
+### Why this is nicer than CSV or Plaid
+
+- **Exact duplicate detection.** Every transaction carries a stable ID from the
+  bank, so re-syncing can never produce a double. CSV import has to infer this
+  from date + amount + description.
+- **Corrections stick.** If you recategorize something by hand, later syncs
+  update the amount and description if the bank revised them, but never touch
+  your category.
+- **No approval process.** Unlike Plaid, you can use it with your real bank
+  today.
+
+### Notes
+
+- **Pending transactions are deliberately not imported.** A pending charge is
+  later replaced by a posted one with a *different* ID, which would leave a
+  permanent duplicate behind. You see transactions once they post.
+- Your Access URL is the credential — it embeds a username and password. It's
+  stored only in your local database and never sent anywhere except SimpleFIN.
+- **Disconnect** deletes the connection and everything it imported. It does
+  *not* cancel your SimpleFIN subscription — do that on their site.
+
+---
+
+## Bank sync (Plaid)
 
 Optional. Everything else works without it.
 
@@ -224,7 +283,7 @@ src/
     page.tsx            Dashboard
     transactions/       Searchable, editable transaction list
     budgets/            Budget editor with history-based suggestions
-    accounts/           Accounts, bank linking, CSV import
+    accounts/           Accounts, bank sync, CSV import
     insights/           AI analysis
     api/                JSON API behind all of the above
   components/           React components (Charts.tsx has the SVG charts)
@@ -234,7 +293,8 @@ src/
     money.ts            Money and date handling — read this one first
     categorize.ts       Rule-based auto-categorization
     queries.ts          Every read the UI needs
-    plaid.ts            Bank sync
+    plaid.ts            Bank sync via Plaid
+    simplefin.ts        Bank sync via SimpleFIN
     ai.ts               Claude integration
     csv.ts              CSV import and merchant-name cleanup
 scripts/

@@ -2,6 +2,7 @@ import { AccountManager } from "@/components/AccountManager";
 import { formatCents } from "@/lib/money";
 import { listAccounts, listPlaidItems, netWorthCents } from "@/lib/queries";
 import { isPlaidConfigured, plaidEnvName } from "@/lib/plaid";
+import { listConnections } from "@/lib/simplefin";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,7 @@ export default async function AccountsPage() {
       <AccountManager
         accounts={accounts}
         banks={banks}
+        simplefinConnections={listConnections()}
         plaidConfigured={isPlaidConfigured()}
         plaidEnvironment={plaidEnvName()}
       />

@@ -38,6 +38,19 @@ CREATE TABLE IF NOT EXISTS plaid_items (
   created_at        TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- One row per SimpleFIN Bridge connection. The access_url IS the credential —
+-- it embeds a username and password — so it is treated as a secret: stored only
+-- in this local file, never logged, never returned by the API.
+CREATE TABLE IF NOT EXISTS simplefin_connections (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  access_url     TEXT    NOT NULL UNIQUE,
+  name           TEXT,
+  status         TEXT    NOT NULL DEFAULT 'active'
+                         CHECK (status IN ('active','needs_reauth')),
+  last_synced_at TEXT,
+  created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS categories (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   name        TEXT    NOT NULL UNIQUE,
@@ -66,7 +79,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   -- from spending totals, or moving money looks like spending it.
   is_transfer           INTEGER NOT NULL DEFAULT 0,
   source                TEXT    NOT NULL DEFAULT 'manual'
-                                CHECK (source IN ('manual','plaid','csv')),
+                                CHECK (source IN ('manual','plaid','csv','simplefin')),
   plaid_transaction_id  TEXT UNIQUE,
   -- Set when a human picks the category, so auto-categorization never
   -- overwrites a decision you made yourself.
