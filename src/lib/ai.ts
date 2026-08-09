@@ -30,12 +30,23 @@ import { getSetting } from "./db";
 
 export const DEFAULT_MODEL = "claude-opus-5";
 
+/**
+ * An env var present but empty — which is exactly what `.env.example` ships,
+ * e.g. `ANTHROPIC_MODEL=` — is `""`, not undefined. `??` would happily return
+ * that empty string and we would call the API with no model name. Treat blank
+ * as unset.
+ */
+function envOr(name: string, fallback: string): string {
+  const value = process.env[name]?.trim();
+  return value ? value : fallback;
+}
+
 export function isAIConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+  return Boolean(process.env.ANTHROPIC_API_KEY?.trim());
 }
 
 export function aiModel(): string {
-  return process.env.ANTHROPIC_MODEL ?? DEFAULT_MODEL;
+  return envOr("ANTHROPIC_MODEL", DEFAULT_MODEL);
 }
 
 /* ------------------------------------------------------------------ */

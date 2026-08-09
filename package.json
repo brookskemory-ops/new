@@ -9,6 +9,7 @@
     "start": "next start",
     "seed": "tsx scripts/seed.ts",
     "reset": "tsx scripts/reset.ts",
+    "set-key": "tsx scripts/set-key.ts",
     "typecheck": "tsc --noEmit"
   },
   "repository": {

@@ -244,10 +244,12 @@ specific observations, ranked recommendations, and suggested budgets.
    It's pay-as-you-go — no subscription, and it is a *separate* thing from a
    Claude.ai chat subscription.
 2. Add credit (the minimum is $5, which is far more than this app will use).
-3. Put it in `.env`:
+3. Save it:
+   ```bash
+   npm run set-key ANTHROPIC_API_KEY
    ```
-   ANTHROPIC_API_KEY=sk-ant-...
-   ```
+   It prompts for the key, hides it as you type, and writes it to `.env` for
+   you. (You can edit `.env` by hand instead if you prefer.)
 4. Restart the dev server.
 
 ### What actually gets sent
@@ -325,6 +327,7 @@ Plaid uses the opposite convention and is flipped once, at the boundary, in
 | `npm start` | Run the production build |
 | `npm run seed` | Load six months of demo data |
 | `npm run reset` | Delete all financial data |
+| `npm run set-key` | Save an API key to `.env` without opening a text editor |
 | `npm run typecheck` | Type-check without building |
 
 ---

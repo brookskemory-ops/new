@@ -24,12 +24,16 @@ import type { AccountType } from "./types";
  * and never leaves this machine.
  */
 
+/**
+ * A blank line in .env (`PLAID_SECRET=`) yields `""`, not undefined, so `??`
+ * would treat it as configured. Blank means unset.
+ */
 export function isPlaidConfigured(): boolean {
-  return Boolean(process.env.PLAID_CLIENT_ID && process.env.PLAID_SECRET);
+  return Boolean(process.env.PLAID_CLIENT_ID?.trim() && process.env.PLAID_SECRET?.trim());
 }
 
 export function plaidEnvName(): string {
-  return process.env.PLAID_ENV ?? "sandbox";
+  return process.env.PLAID_ENV?.trim() || "sandbox";
 }
 
 let client: PlaidApi | null = null;
