@@ -1,0 +1,181 @@
+@import "tailwindcss";
+
+/*
+ * Palette is defined once as CSS variables and consumed through Tailwind's
+ * theme, so light and dark stay in sync and no component hardcodes a color.
+ */
+
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f1f3f6;
+  --border: #e2e5ea;
+  --text: #16191d;
+  --text-muted: #666e7a;
+  --text-faint: #949cab;
+
+  --accent: #2563eb;
+  --accent-soft: #dbe6fe;
+  --positive: #067a52;
+  --positive-soft: #d6f3e7;
+  --negative: #c02626;
+  --negative-soft: #fbdede;
+  --warn: #a76100;
+  --warn-soft: #fdedd3;
+
+  --shadow: 0 1px 2px rgb(16 24 40 / 0.05), 0 1px 3px rgb(16 24 40 / 0.06);
+
+  /*
+   * Chart series colors are separate tokens from the text colors above. Text
+   * needs high contrast; a chart mark needs to sit in a mid lightness band so
+   * series stay distinguishable under color-vision deficiency. These two pairs
+   * were checked with the palette validator against their own surface — light
+   * on #ffffff, dark on #171a1f — for lightness band, chroma, CVD separation,
+   * and contrast. Changing them means re-running that check.
+   */
+  --series-spending: #2563eb;
+  --series-income: #067a52;
+  --series-grid: #e6e9ee;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1013;
+    --surface: #171a1f;
+    --surface-2: #1f2329;
+    --border: #2a2f37;
+    --text: #eceef1;
+    --text-muted: #9aa3b0;
+    --text-faint: #6b7482;
+
+    --accent: #5b8dfa;
+    --accent-soft: #1b2843;
+    --positive: #3ddc9a;
+    --positive-soft: #123527;
+    --negative: #ff6b6b;
+    --negative-soft: #3a1a1c;
+    --warn: #f0a742;
+    --warn-soft: #3a2a12;
+
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px rgb(0 0 0 / 0.25);
+
+    /* Re-stepped for the dark surface, not flipped — see the note above. */
+    --series-spending: #5b8dfa;
+    --series-income: #1fa86e;
+    --series-grid: #262b33;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-positive: var(--positive);
+  --color-positive-soft: var(--positive-soft);
+  --color-negative: var(--negative);
+  --color-negative-soft: var(--negative-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-series-spending: var(--series-spending);
+  --color-series-income: var(--series-income);
+  --color-series-grid: var(--series-grid);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Money is read in columns and compared line to line, so it gets tabular
+ * figures — otherwise the digits jitter and the decimal points don't line up.
+ */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+@utility card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow);
+}
+
+@utility field {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.875rem;
+  color: var(--text);
+  outline: none;
+}
+
+.field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+@utility btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@utility btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent);
+  filter: brightness(1.08);
+}
+
+/* Respect a reduced-motion preference for the few animated affordances. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
