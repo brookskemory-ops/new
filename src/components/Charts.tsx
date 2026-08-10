@@ -23,7 +23,7 @@ export function CategoryBars({
   data,
   emptyMessage = "No spending recorded for this month yet.",
 }: {
-  data: Array<{ name: string; total_cents: number; count: number }>;
+  data: Array<{ name: string; total_cents: number; count: number; color?: string }>;
   emptyMessage?: string;
 }) {
   const [hovered, setHovered] = useState<number | null>(null);
@@ -48,17 +48,25 @@ export function CategoryBars({
             key={row.name}
             onMouseEnter={() => setHovered(index)}
             onMouseLeave={() => setHovered(null)}
-            className="grid grid-cols-[minmax(6.5rem,9rem)_1fr_auto] items-center gap-3"
+            className="grid grid-cols-[minmax(7rem,10rem)_1fr_auto] items-center gap-3"
           >
-            <span className="truncate text-sm text-muted" title={row.name}>
-              {row.name}
+            <span className="flex min-w-0 items-center gap-2" title={row.name}>
+              {/* The category's own color as a small marker. The bar stays one
+                  hue because this is a single series ranked by size — color
+                  here is identity, not magnitude. */}
+              <span
+                aria-hidden
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ background: row.color ?? "var(--series-spending)" }}
+              />
+              <span className="truncate text-sm text-muted">{row.name}</span>
             </span>
 
             {/* The track is the scale; the fill is the value. 4px rounded end
                 on the data side only, so the bar stays anchored to zero. */}
-            <span className="relative block h-5 rounded-sm bg-surface-2">
+            <span className="relative block h-5 rounded-md bg-surface-2">
               <span
-                className="absolute inset-y-0 left-0 rounded-r-[4px] bg-series-spending transition-[width] duration-300"
+                className="absolute inset-y-0 left-0 rounded-r-[4px] bg-series-spending transition-[width] duration-500 ease-out"
                 style={{ width: `${Math.max(pct, 1.5)}%` }}
               />
               {active && (
@@ -380,13 +388,23 @@ export function StatTile({
         ? "text-negative"
         : "text-text";
 
+  // A thin accent rail rather than a tinted card: it marks the tile's meaning
+  // without washing the figure itself in color, which would fight the value.
+  const railClass =
+    tone === "positive"
+      ? "bg-positive"
+      : tone === "negative"
+        ? "bg-negative"
+        : "bg-border";
+
   return (
-    <div className="card p-4">
-      <div className="text-xs font-medium uppercase tracking-wide text-faint">
+    <div className="card relative overflow-hidden p-4 pl-5">
+      <span aria-hidden className={`absolute inset-y-0 left-0 w-1 ${railClass}`} />
+      <div className="text-[0.6875rem] font-semibold uppercase tracking-wider text-faint">
         {label}
       </div>
-      <div className={`tnum mt-1.5 text-2xl font-semibold ${toneClass}`}>{value}</div>
-      {sub && <div className="mt-1 text-xs text-muted">{sub}</div>}
+      <div className={`figure-lg mt-1.5 text-2xl ${toneClass}`}>{value}</div>
+      {sub && <div className="mt-1 text-xs leading-snug text-muted">{sub}</div>}
     </div>
   );
 }

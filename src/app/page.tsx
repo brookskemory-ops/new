@@ -57,7 +57,7 @@ export default async function Dashboard({
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">Dashboard</h1>
+        <h1 className="page-title">Dashboard</h1>
         <Suspense fallback={null}>
           <MonthPicker month={month} />
         </Suspense>
@@ -136,16 +136,23 @@ export default async function Dashboard({
 
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
         <section className="card p-4">
-          <h2 className="mb-1 text-sm font-semibold">Where the money went</h2>
+          <h2 className="section-title mb-1">Where the money went</h2>
           <p className="mb-4 text-xs text-muted">
             Top categories in {formatMonth(month)}. Transfers between your own
             accounts are excluded.
           </p>
-          <CategoryBars data={categories} />
+          <CategoryBars
+            data={categories.map((entry) => ({
+              name: entry.name,
+              total_cents: entry.total_cents,
+              count: entry.count,
+              color: entry.color,
+            }))}
+          />
         </section>
 
         <section className="card p-4">
-          <h2 className="mb-1 text-sm font-semibold">Add an expense</h2>
+          <h2 className="section-title mb-1">Add an expense</h2>
           <p className="mb-4 text-xs text-muted">
             It gets categorized automatically — you can correct it after.
           </p>
@@ -154,7 +161,7 @@ export default async function Dashboard({
       </div>
 
       <section className="card p-4">
-        <h2 className="mb-1 text-sm font-semibold">Last six months</h2>
+        <h2 className="section-title mb-1">Last six months</h2>
         <p className="mb-4 text-xs text-muted">
           Money in against money out. Bars that cross mean a month you spent more
           than you earned.
@@ -165,7 +172,7 @@ export default async function Dashboard({
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="card p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Budgets</h2>
+            <h2 className="section-title">Budgets</h2>
             <Link href="/budgets" className="text-xs text-accent hover:underline">
               Manage
             </Link>
@@ -194,7 +201,7 @@ export default async function Dashboard({
         </section>
 
         <section className="card p-4">
-          <h2 className="mb-1 text-sm font-semibold">Recurring charges</h2>
+          <h2 className="section-title mb-1">Recurring charges</h2>
           <p className="mb-3 text-xs text-muted">
             Charged in at least 3 of the last 4 months at a steady amount
             {recurringTotal > 0 && (
@@ -235,7 +242,7 @@ export default async function Dashboard({
 
       <section className="card p-4">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Recent activity</h2>
+          <h2 className="section-title">Recent activity</h2>
           <Link
             href={`/transactions?month=${month}`}
             className="text-xs text-accent hover:underline"

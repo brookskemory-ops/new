@@ -102,7 +102,7 @@ export function ForecastView({
       <div className="grid gap-5 lg:grid-cols-2">
         {/* Upcoming */}
         <section className="card p-4">
-          <h2 className="text-sm font-semibold">What is coming</h2>
+          <h2 className="section-title">What is coming</h2>
           <p className="mb-3 text-xs text-muted">
             Detected commitments, soonest first — about{" "}
             <strong className="tnum text-text">
@@ -203,7 +203,7 @@ function BalanceProjection({ forecast }: { forecast: Forecast }) {
 
   return (
     <section className="card p-4">
-      <h2 className="text-sm font-semibold">Projected balance</h2>
+      <h2 className="section-title">Projected balance</h2>
       <p className="mb-2 text-xs text-muted">
         Checking and cash over the next {forecast.horizon_days} days. Lowest
         realistic point:{" "}
@@ -393,7 +393,7 @@ function PriceRises({ items }: { items: RecurringSeries[] }) {
 
   return (
     <section className="card p-4">
-      <h2 className="text-sm font-semibold">Quiet price rises</h2>
+      <h2 className="section-title">Quiet price rises</h2>
       <p className="mb-3 text-xs text-muted">
         Recurring charges that went up without announcing themselves.
       </p>
@@ -444,7 +444,7 @@ function LifestyleCreep({ change }: { change: IncomeChange }) {
   if (!change.detected) {
     return (
       <section className="card p-4">
-        <h2 className="text-sm font-semibold">Income change</h2>
+        <h2 className="section-title">Income change</h2>
         <p className="mt-2 text-sm text-muted">
           No step change in income detected yet. Once a few months either side of
           a pay change exist, this shows how much of the raise you actually kept.
@@ -458,7 +458,7 @@ function LifestyleCreep({ change }: { change: IncomeChange }) {
 
   return (
     <section className="card p-4">
-      <h2 className="text-sm font-semibold">What happened to your raise</h2>
+      <h2 className="section-title">What happened to your raise</h2>
       <p className="mb-3 text-xs text-muted">
         Comparing the {change.before.months} months before{" "}
         {change.change_month} with the {change.after.months} since.

@@ -89,7 +89,7 @@ export default async function BudgetsPage({
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Budgets</h1>
+          <h1 className="page-title">Budgets</h1>
           <p className="text-xs text-muted">
             A budget with no month set applies to every month. Set 0 to remove one.
           </p>

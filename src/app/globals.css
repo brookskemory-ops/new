@@ -23,7 +23,9 @@
   --warn: #a76100;
   --warn-soft: #fdedd3;
 
-  --shadow: 0 1px 2px rgb(16 24 40 / 0.05), 0 1px 3px rgb(16 24 40 / 0.06);
+  --shadow: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.05);
+  --shadow-lifted: 0 1px 2px rgb(16 24 40 / 0.05), 0 8px 20px -6px rgb(16 24 40 / 0.12);
+  --ring: rgb(37 99 235 / 0.14);
 
   /*
    * Chart series colors are separate tokens from the text colors above. Text
@@ -57,7 +59,9 @@
     --warn: #f0a742;
     --warn-soft: #3a2a12;
 
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px rgb(0 0 0 / 0.25);
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.32), 0 1px 3px rgb(0 0 0 / 0.24);
+    --shadow-lifted: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 24px -8px rgb(0 0 0 / 0.5);
+    --ring: rgb(91 141 250 / 0.18);
 
     /* Re-stepped for the dark surface, not flipped — see the note above. */
     --series-spending: #5b8dfa;
@@ -114,8 +118,9 @@ body {
 @utility card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  border-radius: 0.875rem;
   box-shadow: var(--shadow);
+  transition: box-shadow 180ms ease, border-color 180ms ease;
   /*
    * Cards sit in grids and flex rows, where an item's automatic minimum size is
    * its content — so one long merchant name makes the whole card refuse to
@@ -123,6 +128,35 @@ body {
    * to their container and let their own content truncate or scroll.
    */
   min-width: 0;
+}
+
+/* A quiet lift on hover: enough to signal the card is a distinct surface you
+ * are reading, not enough to make the page feel like it is moving. */
+.card:hover {
+  box-shadow: var(--shadow-lifted);
+}
+
+/* Page headings share one rhythm so every screen opens the same way. */
+@utility page-title {
+  font-size: 1.5rem;
+  line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+@utility section-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+/* Big money figures: tighter tracking so long amounts stay compact and the
+ * digits read as one number rather than a row of separate glyphs. */
+@utility figure-lg {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  letter-spacing: -0.02em;
+  font-weight: 640;
 }
 
 @utility field {
@@ -138,7 +172,11 @@ body {
 
 .field:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.field:hover:not(:focus) {
+  border-color: color-mix(in srgb, var(--border) 60%, var(--text-faint));
 }
 
 @utility btn {
@@ -159,6 +197,12 @@ body {
 
 .btn:hover:not(:disabled) {
   background: var(--surface-2);
+  border-color: color-mix(in srgb, var(--border) 55%, var(--text-faint));
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
 }
 
 .btn:disabled {
@@ -174,7 +218,8 @@ body {
 
 .btn-primary:hover:not(:disabled) {
   background: var(--accent);
-  filter: brightness(1.08);
+  border-color: var(--accent);
+  filter: brightness(1.07);
 }
 
 /* Respect a reduced-motion preference for the few animated affordances. */

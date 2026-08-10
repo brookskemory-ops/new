@@ -261,6 +261,15 @@ export interface SimpleFinSyncResult {
   updated: number;
   accounts: number;
   warnings: string[];
+  /** Per-account detail, so a bank returning nothing is visible rather than silent. */
+  per_account: Array<{
+    name: string;
+    added: number;
+    total_returned: number;
+    is_new: boolean;
+  }>;
+  /** True when a newly-discovered account triggered a full-history backfill. */
+  backfilled: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -275,7 +284,10 @@ const FIRST_SYNC_DAYS = 365;
  */
 const OVERLAP_DAYS = 14;
 
-export async function syncConnection(connectionId: number): Promise<SimpleFinSyncResult> {
+export async function syncConnection(
+  connectionId: number,
+  options: { fullHistory?: boolean } = {},
+): Promise<SimpleFinSyncResult> {
   const connection = db
     .prepare(
       "SELECT id, access_url, last_synced_at FROM simplefin_connections WHERE id = ?",
@@ -288,23 +300,27 @@ export async function syncConnection(connectionId: number): Promise<SimpleFinSyn
 
   const { base, authorization } = splitAccessUrl(connection.access_url);
 
-  const days = connection.last_synced_at ? OVERLAP_DAYS : FIRST_SYNC_DAYS;
-  const startDate = Math.floor(Date.now() / 1000) - days * 86400;
+  const days =
+    options.fullHistory || !connection.last_synced_at ? FIRST_SYNC_DAYS : OVERLAP_DAYS;
 
-  // Pending transactions are deliberately not requested: a pending charge is
-  // later replaced by a posted one with a *different* id, which would leave a
-  // permanent duplicate behind.
-  const url = `${base}/accounts?start-date=${startDate}`;
+  const fetchWindow = async (windowDays: number) => {
+    const startDate = Math.floor(Date.now() / 1000) - windowDays * 86400;
+    // Pending transactions ARE requested. Many institutions — credit unions
+    // especially — leave a charge pending for days, so excluding them means
+    // the most recent activity is simply missing, which looks like a broken
+    // sync. They are marked pending and pruned below once they post.
+    const url = `${base}/accounts?start-date=${startDate}&pending=1`;
+    try {
+      return await fetch(url, { headers: { Authorization: authorization } });
+    } catch (error) {
+      throw new SimpleFinError(
+        `Could not reach SimpleFIN: ${error instanceof Error ? error.message : error}`,
+        "network",
+      );
+    }
+  };
 
-  let response: Response;
-  try {
-    response = await fetch(url, { headers: { Authorization: authorization } });
-  } catch (error) {
-    throw new SimpleFinError(
-      `Could not reach SimpleFIN: ${error instanceof Error ? error.message : error}`,
-      "network",
-    );
-  }
+  let response = await fetchWindow(days);
 
   if (response.status === 403) {
     db.prepare("UPDATE simplefin_connections SET status = 'needs_reauth' WHERE id = ?").run(
@@ -332,8 +348,28 @@ export async function syncConnection(connectionId: number): Promise<SimpleFinSyn
     throw new SimpleFinError("SimpleFIN returned a response that was not JSON.", "api");
   }
 
-  const warnings = collectWarnings(payload);
-  const accounts = payload.accounts ?? [];
+  let warnings = collectWarnings(payload);
+  let accounts = payload.accounts ?? [];
+
+  // A bank added at SimpleFIN *after* the first sync would otherwise only ever
+  // get the short overlap window, so its existing history would never arrive —
+  // it would look permanently empty. Discovering an unknown account triggers a
+  // one-off full-history fetch.
+  let backfilled = false;
+  if (days === OVERLAP_DAYS) {
+    const known = db.prepare("SELECT simplefin_account_id FROM accounts WHERE simplefin_account_id IS NOT NULL")
+      .all() as Array<{ simplefin_account_id: string }>;
+    const knownIds = new Set(known.map((row) => row.simplefin_account_id));
+    if (accounts.some((account) => !knownIds.has(account.id))) {
+      response = await fetchWindow(FIRST_SYNC_DAYS);
+      if (response.ok) {
+        payload = (await response.json()) as SimpleFinResponse;
+        warnings = collectWarnings(payload);
+        accounts = payload.accounts ?? [];
+        backfilled = true;
+      }
+    }
+  }
   const connectionNames = new Map(
     (payload.connections ?? []).map((entry) => [entry.conn_id, entry.name]),
   );
@@ -359,17 +395,19 @@ export async function syncConnection(connectionId: number): Promise<SimpleFinSyn
     `INSERT INTO transactions
        (account_id, category_id, date, amount_cents, merchant, description,
         pending, is_transfer, source, simplefin_transaction_id)
-     VALUES (?, ?, ?, ?, ?, ?, 0, ?, 'simplefin', ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'simplefin', ?)`,
   );
   const updateTransaction = db.prepare(
     `UPDATE transactions
         SET date = ?, amount_cents = ?, merchant = ?, description = ?,
-            updated_at = datetime('now')
+            pending = ?, updated_at = datetime('now')
       WHERE id = ?`,
   );
 
   let added = 0;
   let updated = 0;
+  const perAccount: SimpleFinSyncResult["per_account"] = [];
+  const seenIds = new Set<string>();
 
   db.transaction(() => {
     for (const account of accounts) {
@@ -386,6 +424,8 @@ export async function syncConnection(connectionId: number): Promise<SimpleFinSyn
           : "USD";
 
       const existing = findAccount.get(account.id) as { id: number } | undefined;
+      const isNew = !existing;
+      let accountAdded = 0;
       let accountId: number;
 
       if (existing) {
@@ -418,15 +458,25 @@ export async function syncConnection(connectionId: number): Promise<SimpleFinSyn
         const description = transaction.description ?? transaction.memo ?? "";
         const merchant = transaction.payee ?? description;
 
+        seenIds.add(transaction.id);
+        const isPending = transaction.pending === true;
+
         const known = findTransaction.get(transaction.id) as
           | { id: number; category_locked: number }
           | undefined;
 
         if (known) {
           // Amend in place — banks revise amounts and descriptions after
-          // posting. The category is never touched, so a correction you made
-          // by hand survives every future sync.
-          updateTransaction.run(date, amountCents, merchant, description, known.id);
+          // posting, and a pending charge becomes settled. The category is
+          // never touched, so a correction made by hand survives every sync.
+          updateTransaction.run(
+            date,
+            amountCents,
+            merchant,
+            description,
+            isPending ? 1 : 0,
+            known.id,
+          );
           updated++;
           continue;
         }
@@ -439,11 +489,38 @@ export async function syncConnection(connectionId: number): Promise<SimpleFinSyn
           amountCents,
           merchant,
           description,
+          isPending ? 1 : 0,
           looksLikeTransfer(input) ? 1 : 0,
           transaction.id,
         );
         added++;
+        accountAdded++;
       }
+
+      perAccount.push({
+        name: account.name,
+        added: accountAdded,
+        total_returned: (account.transactions ?? []).length,
+        is_new: isNew,
+      });
+    }
+
+    // A pending charge is replaced by a posted one carrying a *different* id,
+    // so the pending row would otherwise linger forever as a phantom duplicate.
+    // Anything still marked pending that the feed no longer returns has settled
+    // under its new id and is dropped.
+    const windowStart = toDateString(
+      new Date(Date.now() - (days + 2) * 86_400_000),
+    );
+    const stale = db
+      .prepare(
+        `SELECT id, simplefin_transaction_id FROM transactions
+          WHERE source = 'simplefin' AND pending = 1 AND date >= ?`,
+      )
+      .all(windowStart) as Array<{ id: number; simplefin_transaction_id: string }>;
+    const dropPending = db.prepare("DELETE FROM transactions WHERE id = ?");
+    for (const row of stale) {
+      if (!seenIds.has(row.simplefin_transaction_id)) dropPending.run(row.id);
     }
 
     db.prepare(
@@ -453,11 +530,18 @@ export async function syncConnection(connectionId: number): Promise<SimpleFinSyn
     ).run(connectionId);
   })();
 
-  return { added, updated, accounts: accounts.length, warnings };
+  return {
+    added,
+    updated,
+    accounts: accounts.length,
+    warnings,
+    per_account: perAccount,
+    backfilled,
+  };
 }
 
 /** Sync every SimpleFIN connection. One failure does not abort the rest. */
-export async function syncAllConnections(): Promise<{
+export async function syncAllConnections(options: { fullHistory?: boolean } = {}): Promise<{
   results: SimpleFinSyncResult[];
   errors: Array<{ connectionId: number; message: string }>;
 }> {
@@ -470,7 +554,7 @@ export async function syncAllConnections(): Promise<{
 
   for (const connection of connections) {
     try {
-      results.push(await syncConnection(connection.id));
+      results.push(await syncConnection(connection.id, options));
     } catch (error) {
       errors.push({
         connectionId: connection.id,

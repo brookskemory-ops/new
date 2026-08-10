@@ -27,7 +27,7 @@ export default async function InsightsPage({
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Insights</h1>
+          <h1 className="page-title">Insights</h1>
           <p className="text-xs text-muted">
             Claude reads your monthly totals and tells you what to do about them.
           </p>

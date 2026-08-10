@@ -136,7 +136,7 @@ function InsightBody({ insight }: { insight: Insight }) {
 
       {insight.observations.length > 0 && (
         <section className="card p-5">
-          <h3 className="mb-3 text-sm font-semibold">What the numbers show</h3>
+          <h3 className="section-title mb-3">What the numbers show</h3>
           <ul className="flex flex-col gap-3">
             {insight.observations.map((observation, index) => {
               const severity = SEVERITY[observation.severity] ?? SEVERITY.info;
@@ -163,7 +163,7 @@ function InsightBody({ insight }: { insight: Insight }) {
 
       {insight.recommendations.length > 0 && (
         <section className="card p-5">
-          <h3 className="mb-3 text-sm font-semibold">What to do</h3>
+          <h3 className="section-title mb-3">What to do</h3>
           <ol className="flex flex-col gap-4">
             {insight.recommendations.map((recommendation, index) => (
               <li key={index} className="border-l-2 border-accent pl-3">
@@ -189,7 +189,7 @@ function InsightBody({ insight }: { insight: Insight }) {
 
       {insight.suggested_budgets.length > 0 && (
         <section className="card p-5">
-          <h3 className="mb-1 text-sm font-semibold">Suggested budgets</h3>
+          <h3 className="section-title mb-1">Suggested budgets</h3>
           <p className="mb-3 text-xs text-muted">
             Set any of these on the Budgets page.
           </p>

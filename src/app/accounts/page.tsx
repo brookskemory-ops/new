@@ -14,7 +14,7 @@ export default async function AccountsPage() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-xl font-semibold">Accounts</h1>
+        <h1 className="page-title">Accounts</h1>
         <p className="text-xs text-muted">
           Net worth{" "}
           <span className="tnum font-medium text-text">

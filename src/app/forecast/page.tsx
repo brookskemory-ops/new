@@ -16,7 +16,7 @@ export default async function ForecastPage() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-xl font-semibold">Forecast</h1>
+        <h1 className="page-title">Forecast</h1>
         <p className="text-xs text-muted">
           Everything else here reports the past. This is the part that looks
           forward — and it only counts charges it has actually watched repeat.

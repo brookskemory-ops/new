@@ -56,7 +56,7 @@ export default async function TransactionsPage({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Transactions</h1>
+          <h1 className="page-title">Transactions</h1>
           <p className="text-xs text-muted">
             {total} in {formatMonth(month)} · net{" "}
             <span className="tnum">{formatCents(net)}</span> on this page

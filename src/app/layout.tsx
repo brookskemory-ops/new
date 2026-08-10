@@ -13,12 +13,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <div className="min-h-screen">
-          <header className="sticky top-0 z-20 border-b border-border bg-surface/85 backdrop-blur">
+          <header className="sticky top-0 z-20 border-b border-border bg-surface/80 backdrop-blur-md">
             <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-3">
               <Link href="/" className="flex items-center gap-2 font-semibold">
                 <span
                   aria-hidden
-                  className="grid h-7 w-7 place-items-center rounded-lg bg-accent text-sm text-white"
+                  className="grid h-7 w-7 place-items-center rounded-lg bg-accent text-sm font-semibold text-white shadow-sm"
                 >
                   L
                 </span>

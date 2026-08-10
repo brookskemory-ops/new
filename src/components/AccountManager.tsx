@@ -198,7 +198,7 @@ export function AccountManager({
       <section className="card p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="text-sm font-semibold">Linked banks</h2>
+            <h2 className="section-title">Linked banks</h2>
             <p className="text-xs text-muted">
               Transactions sync automatically through Plaid.
             </p>
@@ -323,12 +323,20 @@ export function AccountManager({
  * .env entry. You link banks on SimpleFIN's site, paste the one-time Setup
  * Token here, and this trades it for stored credentials.
  */
+interface SyncAccountDetail {
+  name: string;
+  added: number;
+  total_returned: number;
+  is_new: boolean;
+}
+
 function SimpleFinSection({ connections }: { connections: SimpleFinConnection[] }) {
   const router = useRouter();
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [status, setStatus] = useState<{ text: string; error: boolean } | null>(null);
   const [showForm, setShowForm] = useState(connections.length === 0);
+  const [accountDetail, setAccountDetail] = useState<SyncAccountDetail[]>([]);
 
   async function connect(event: React.FormEvent) {
     event.preventDefault();
@@ -357,16 +365,19 @@ function SimpleFinSection({ connections }: { connections: SimpleFinConnection[] 
     }
   }
 
-  async function sync(connectionId?: number) {
+  async function sync(connectionId?: number, fullHistory = false) {
     setBusy("sync");
-    setStatus({ text: "Syncing…", error: false });
+    setStatus({
+      text: fullHistory ? "Re-pulling a full year…" : "Syncing…",
+      error: false,
+    });
     try {
-      const response = await fetch(
-        connectionId
-          ? `/api/simplefin/sync?connection=${connectionId}`
-          : "/api/simplefin/sync",
-        { method: "POST" },
-      );
+      const params = new URLSearchParams();
+      if (connectionId) params.set("connection", String(connectionId));
+      if (fullHistory) params.set("full", "1");
+      const response = await fetch(`/api/simplefin/sync?${params}`, {
+        method: "POST",
+      });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
 
@@ -378,16 +389,29 @@ function SimpleFinSection({ connections }: { connections: SimpleFinConnection[] 
         (result: { warnings: string[] }) => result.warnings,
       );
       const failures = data.errors ?? [];
+      // Per-account detail turns "nothing happened" into something you can act
+      // on: which bank returned nothing, and whether it returned nothing at all
+      // or returned rows that were already present.
+      const perAccount = data.results.flatMap(
+        (result: { per_account?: SyncAccountDetail[] }) => result.per_account ?? [],
+      ) as SyncAccountDetail[];
+      const silent = perAccount.filter((entry) => entry.total_returned === 0);
 
+      const parts: string[] = [];
+      parts.push(added > 0 ? `Added ${added} new transactions.` : "No new transactions.");
+      if (silent.length > 0) {
+        parts.push(
+          `${silent.map((entry) => entry.name).join(", ")} returned nothing — if that looks wrong, check the connection on SimpleFIN's site.`,
+        );
+      }
+      if (warnings.length > 0) parts.push(`SimpleFIN reported: ${warnings.join("; ")}`);
+
+      setAccountDetail(perAccount);
       setStatus({
         text: failures.length
           ? failures.map((f: { message: string }) => f.message).join(" ")
-          : warnings.length
-            ? `Added ${added} transactions. SimpleFIN reported: ${warnings.join("; ")}`
-            : added > 0
-              ? `Added ${added} new transactions.`
-              : "Already up to date.",
-        error: failures.length > 0,
+          : parts.join(" "),
+        error: failures.length > 0 || warnings.length > 0,
       });
       router.refresh();
     } catch (error) {
@@ -425,7 +449,7 @@ function SimpleFinSection({ connections }: { connections: SimpleFinConnection[] 
     <section className="card p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold">SimpleFIN</h2>
+          <h2 className="section-title">SimpleFIN</h2>
           <p className="text-xs text-muted">
             Automatic sync without a developer account. No API keys to set up.
           </p>
@@ -464,6 +488,24 @@ function SimpleFinSection({ connections }: { connections: SimpleFinConnection[] 
         </p>
       )}
 
+      {accountDetail.length > 0 && (
+        <div className="mb-3 rounded-lg bg-surface-2 p-3">
+          <div className="mb-1 text-xs font-medium">Last sync, by account</div>
+          <ul className="text-xs text-muted">
+            {accountDetail.map((entry) => (
+              <li key={entry.name} className="flex justify-between gap-3 py-0.5">
+                <span className="min-w-0 truncate">{entry.name}</span>
+                <span className="tnum shrink-0">
+                  {entry.total_returned === 0
+                    ? "returned nothing"
+                    : `${entry.added} new of ${entry.total_returned} returned`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {connections.length > 0 && (
         <ul className="mb-3 divide-y divide-border text-sm">
           {connections.map((connection) => (
@@ -496,6 +538,15 @@ function SimpleFinSection({ connections }: { connections: SimpleFinConnection[] 
                   disabled={busy !== null}
                 >
                   Sync
+                </button>
+                <button
+                  type="button"
+                  onClick={() => sync(connection.id, true)}
+                  className="btn py-1 text-xs"
+                  disabled={busy !== null}
+                  title="Ignore the incremental window and re-pull a full year. Use this if a bank looks like it is missing history."
+                >
+                  Full re-pull
                 </button>
                 <button
                   type="button"
@@ -709,7 +760,7 @@ function AccountList({ accounts }: { accounts: Account[] }) {
 
   return (
     <section className="card p-4">
-      <h2 className="mb-3 text-sm font-semibold">Your accounts</h2>
+      <h2 className="section-title mb-3">Your accounts</h2>
 
       <p className="mb-2 text-xs text-muted">
         Change an account&apos;s type if it was guessed wrong — credit cards and
@@ -807,7 +858,7 @@ function CsvImport({ accounts }: { accounts: Account[] }) {
 
   return (
     <section className="card p-4">
-      <h2 className="text-sm font-semibold">Import a CSV</h2>
+      <h2 className="section-title">Import a CSV</h2>
       <p className="mt-1 text-xs text-muted">
         Export from your bank&apos;s website and drop the file here. Date, amount,
         and description columns are detected automatically — most US bank and card

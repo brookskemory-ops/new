@@ -212,9 +212,17 @@ for the current number.
 
 ### Notes
 
-- **Pending transactions are deliberately not imported.** A pending charge is
-  later replaced by a posted one with a *different* ID, which would leave a
-  permanent duplicate behind. You see transactions once they post.
+- **Pending transactions are imported.** Many institutions — credit unions
+  especially — leave a charge pending for days, so excluding them makes the most
+  recent activity look missing. A pending charge is later replaced by a posted
+  one carrying a *different* ID, so pending rows the feed stops returning are
+  pruned automatically. You never end up with both.
+- **If a bank looks like it is missing history, press "Full re-pull."** Normal
+  syncs only fetch a short recent window. A bank connected at SimpleFIN *after*
+  your first sync gets a full-year backfill automatically, but the button is
+  there for anything else.
+- Each sync reports what every account returned, so a bank sending nothing is
+  visible rather than silent.
 - Your Access URL is the credential — it embeds a username and password. It's
   stored only in your local database and never sent anywhere except SimpleFIN.
 - **Disconnect** deletes the connection and everything it imported. It does
