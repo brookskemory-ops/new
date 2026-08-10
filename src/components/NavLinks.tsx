@@ -15,7 +15,11 @@ export function NavLinks() {
   const pathname = usePathname();
 
   return (
-    <nav className="-mx-1 flex flex-1 gap-1 overflow-x-auto">
+    // min-w-0 is load-bearing: a flex item defaults to min-width:auto, which
+    // refuses to shrink below its content, so without it the nav pushes the
+    // header wider than the screen and the whole page scrolls sideways on a
+    // phone instead of the nav scrolling on its own.
+    <nav className="-mx-1 flex min-w-0 flex-1 gap-1 overflow-x-auto">
       {LINKS.map((link) => {
         const active =
           link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);

@@ -116,6 +116,13 @@ body {
   border: 1px solid var(--border);
   border-radius: 0.75rem;
   box-shadow: var(--shadow);
+  /*
+   * Cards sit in grids and flex rows, where an item's automatic minimum size is
+   * its content — so one long merchant name makes the whole card refuse to
+   * shrink and the page scrolls sideways on a phone. Cards should always yield
+   * to their container and let their own content truncate or scroll.
+   */
+  min-width: 0;
 }
 
 @utility field {

@@ -556,6 +556,127 @@ function SimpleFinSection({ connections }: { connections: SimpleFinConnection[] 
 
 /* ------------------------------------------------------------------ */
 
+const ACCOUNT_TYPES: Array<{ value: string; label: string }> = [
+  { value: "checking", label: "Checking" },
+  { value: "savings", label: "Savings" },
+  { value: "credit", label: "Credit card" },
+  { value: "cash", label: "Cash" },
+  { value: "investment", label: "Investment" },
+  { value: "loan", label: "Loan" },
+  { value: "other", label: "Other" },
+];
+
+/**
+ * One account, with its type editable in place.
+ *
+ * The type is a dropdown rather than something buried in an edit screen
+ * because a wrong guess from bank sync puts the account on the wrong side of
+ * net worth, and that should take one click to correct.
+ */
+function AccountRow({ account }: { account: Account }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const owed = account.type === "credit" || account.type === "loan";
+
+  async function update(patch: Record<string, unknown>) {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/accounts/${account.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      router.refresh();
+    } catch (caught) {
+      setError(describe(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    if (
+      !confirm(
+        `Delete "${account.name}"? Its transactions are deleted too. This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/accounts/${account.id}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      router.refresh();
+    } catch (caught) {
+      setError(describe(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <li className={`py-2 ${busy ? "opacity-50" : ""}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium" title={account.name}>
+            {account.name}
+          </div>
+          <div className="text-xs text-muted">
+            {account.institution ?? "Manual"}
+            {account.mask ? ` ••${account.mask}` : ""}
+            {account.is_manual === 0 ? " · synced" : ""}
+          </div>
+        </div>
+
+        <select
+          className="field w-auto py-1 text-xs"
+          value={account.type}
+          onChange={(event) => update({ type: event.target.value })}
+          disabled={busy}
+          aria-label={`Account type for ${account.name}`}
+        >
+          {ACCOUNT_TYPES.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+
+        <span
+          className={`tnum w-24 shrink-0 text-right font-medium ${
+            owed && account.balance_cents !== 0 ? "text-negative" : ""
+          }`}
+          title={owed ? "Counts against net worth" : "Counts toward net worth"}
+        >
+          {owed && account.balance_cents !== 0 ? "−" : ""}
+          {formatCents(Math.abs(account.balance_cents))}
+        </span>
+
+        {account.is_manual === 1 && (
+          <button
+            type="button"
+            onClick={remove}
+            disabled={busy}
+            className="text-xs text-faint hover:text-negative"
+            aria-label={`Delete ${account.name}`}
+          >
+            Delete
+          </button>
+        )}
+      </div>
+
+      {error && <p className="mt-1 text-xs text-negative">{error}</p>}
+    </li>
+  );
+}
+
 function AccountList({ accounts }: { accounts: Account[] }) {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -590,31 +711,15 @@ function AccountList({ accounts }: { accounts: Account[] }) {
     <section className="card p-4">
       <h2 className="mb-3 text-sm font-semibold">Your accounts</h2>
 
+      <p className="mb-2 text-xs text-muted">
+        Change an account&apos;s type if it was guessed wrong — credit cards and
+        loans count against net worth instead of toward it.
+      </p>
+
       <ul className="mb-4 divide-y divide-border text-sm">
-        {accounts.map((account) => {
-          const owed = account.type === "credit" || account.type === "loan";
-          return (
-            <li
-              key={account.id}
-              className="flex items-center justify-between gap-3 py-2"
-            >
-              <div>
-                <div className="font-medium">{account.name}</div>
-                <div className="text-xs capitalize text-muted">
-                  {account.type}
-                  {account.mask ? ` ••${account.mask}` : ""}
-                  {account.is_manual === 0 ? " · synced" : ""}
-                </div>
-              </div>
-              <span
-                className={`tnum font-medium ${owed && account.balance_cents !== 0 ? "text-negative" : ""}`}
-              >
-                {owed && account.balance_cents !== 0 ? "−" : ""}
-                {formatCents(Math.abs(account.balance_cents))}
-              </span>
-            </li>
-          );
-        })}
+        {accounts.map((account) => (
+          <AccountRow key={account.id} account={account} />
+        ))}
       </ul>
 
       <form onSubmit={addAccount} className="flex flex-col gap-2 border-t border-border pt-3">

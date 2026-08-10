@@ -7,7 +7,7 @@ import {
   isAIConfigured,
 } from "@/lib/ai";
 import { currentMonth } from "@/lib/money";
-import { fail, ok, route } from "@/lib/api";
+import { fail, monthParam, ok, route } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 // The model can take a while at higher effort; don't let the platform cut it off.
@@ -15,7 +15,7 @@ export const maxDuration = 120;
 
 /** Returns a cached analysis if one exists. Never calls the API, never bills. */
 export const GET = route(async (request: Request) => {
-  const month = new URL(request.url).searchParams.get("month") ?? currentMonth();
+  const month = monthParam(new URL(request.url)) ?? currentMonth();
   return ok({
     month,
     configured: isAIConfigured(),

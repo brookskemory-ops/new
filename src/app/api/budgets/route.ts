@@ -2,13 +2,13 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { currentMonth, parseAmountToCents } from "@/lib/money";
 import { budgetProgress } from "@/lib/queries";
-import { fail, ok, route } from "@/lib/api";
+import { fail, monthParam, ok, route } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
 export const GET = route(async (request: Request) => {
   const url = new URL(request.url);
-  const month = url.searchParams.get("month") ?? currentMonth();
+  const month = monthParam(url) ?? currentMonth();
   return ok({ month, budgets: budgetProgress(month) });
 });
 

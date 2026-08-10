@@ -99,6 +99,23 @@ Two things it deliberately gets right that most trackers get wrong:
 
 ---
 
+## Accounts
+
+Each account has a **type**, and it matters beyond labelling: checking,
+savings, cash, and investment accounts count *toward* net worth, while credit
+cards and loans count *against* it.
+
+Bank sync has to guess the type, because the feed carries only a name — and
+banks send the product name ("Sapphire Preferred", "Quicksilver", "Discover
+it") with no generic word like "card" in it. The guesser knows the common card
+brands, but it will still get one wrong eventually.
+
+**When it does, change the type in the dropdown on the Accounts page.** Net
+worth updates immediately. That dropdown is the real fix; the guessing is just
+there to save you the work most of the time.
+
+---
+
 ## Budgets
 
 Set a monthly amount per category on the **Budgets** page. Leave the checkbox

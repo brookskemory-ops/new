@@ -208,16 +208,51 @@ function collectWarnings(payload: SimpleFinResponse): string[] {
 }
 
 /**
- * Guess an account type from its name. SimpleFIN carries no type field, and a
- * credit card counted as an asset would invert the net-worth calculation.
+ * Guess an account type from its name and balance.
+ *
+ * SimpleFIN carries no type field, and a credit card treated as an asset shows
+ * up on the wrong side of net worth. The hard part is that banks send the
+ * *product* name — "Sapphire Preferred", "Quicksilver", "Discover it" — which
+ * contains no generic word like "card" at all, so matching on `card|credit`
+ * alone misses almost every real credit card.
+ *
+ * This is still only a guess. The account type is editable on the Accounts
+ * page, which is the actual fix when a name is unguessable.
  */
-function guessAccountType(name: string): AccountType {
+export function guessAccountType(name: string, balanceCents: number): AccountType {
   const text = name.toLowerCase();
-  if (/credit|card|visa|mastercard|amex/.test(text)) return "credit";
-  if (/savings|save|money market|\bcd\b/.test(text)) return "savings";
-  if (/loan|mortgage|heloc/.test(text)) return "loan";
-  if (/invest|brokerage|401k|ira|roth/.test(text)) return "investment";
-  if (/check|chequing|debit/.test(text)) return "checking";
+
+  // Loans and mortgages first — "home equity loan" also matches nothing else,
+  // and a mortgage must never fall through to a card or a checking account.
+  if (/\b(loan|mortgage|heloc|home equity|auto ?finance|lease)\b/.test(text)) {
+    return "loan";
+  }
+
+  // Generic credit wording, then the card product names US issuers actually
+  // send. Without these, a Chase Sapphire arrives looking like a checking
+  // account.
+  if (/\b(credit|card|visa|mastercard|amex|american express|discover)\b/.test(text)) {
+    return "credit";
+  }
+  if (
+    /\b(sapphire|freedom|slate|quicksilver|venture|savor|platinum|gold|blue cash|double ?cash|custom cash|rewards?|cash ?back|miles|points|signature|world elite)\b/.test(
+      text,
+    )
+  ) {
+    return "credit";
+  }
+
+  if (/\b(invest|brokerage|401\s?k|ira|roth|hsa|529)\b/.test(text)) {
+    return "investment";
+  }
+  if (/\b(savings?|money market|\bcd\b|certificate)\b/.test(text)) return "savings";
+  if (/\b(check(ing)?|chequing|debit|spend)\b/.test(text)) return "checking";
+
+  // Nothing in the name is decisive. A negative balance means the institution
+  // is reporting something you owe, which is far more likely to be a card than
+  // a permanently overdrawn checking account.
+  if (balanceCents < 0) return "credit";
+
   return "checking";
 }
 
@@ -360,7 +395,7 @@ export async function syncConnection(connectionId: number): Promise<SimpleFinSyn
         accountId = Number(
           insertAccount.run(
             account.name,
-            guessAccountType(account.name),
+            guessAccountType(account.name, balanceCents),
             institution,
             balanceCents,
             currency,

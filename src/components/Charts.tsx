@@ -323,7 +323,7 @@ export function BudgetMeter({
   return (
     <div className="py-2.5">
       <div className="mb-1.5 flex items-baseline justify-between gap-3">
-        <span className="truncate text-sm font-medium">{label}</span>
+        <span className="min-w-0 truncate text-sm font-medium">{label}</span>
         <span className="tnum shrink-0 text-sm text-muted">
           {formatCents(spentCents)}{" "}
           <span className="text-faint">of {formatCents(budgetCents)}</span>

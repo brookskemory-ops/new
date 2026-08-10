@@ -3,14 +3,14 @@ import { db } from "@/lib/db";
 import { categorize, looksLikeTransfer } from "@/lib/categorize";
 import { parseAmountToCents } from "@/lib/money";
 import { countTransactions, listTransactions } from "@/lib/queries";
-import { fail, numParam, ok, route } from "@/lib/api";
+import { fail, monthParam, numParam, ok, route } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
 export const GET = route(async (request: Request) => {
   const url = new URL(request.url);
   const transactions = listTransactions({
-    month: url.searchParams.get("month") ?? undefined,
+    month: monthParam(url),
     from: url.searchParams.get("from") ?? undefined,
     to: url.searchParams.get("to") ?? undefined,
     search: url.searchParams.get("q") ?? undefined,
@@ -24,7 +24,7 @@ export const GET = route(async (request: Request) => {
   return ok({
     transactions,
     total: countTransactions({
-      month: url.searchParams.get("month") ?? undefined,
+      month: monthParam(url),
       search: url.searchParams.get("q") ?? undefined,
       categoryId: numParam(url, "category"),
       accountId: numParam(url, "account"),
