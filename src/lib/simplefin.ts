@@ -191,20 +191,47 @@ interface SimpleFinAccount {
   conn_id?: string;
 }
 
+/**
+ * An error entry. The `conn_id` / `account_id` fields are the important part:
+ * they say *which* institution a problem belongs to, which is the difference
+ * between "something is wrong" and "your credit union needs re-authorising".
+ */
+type SimpleFinErrorEntry =
+  | string
+  | { msg?: string; code?: string; conn_id?: string; account_id?: string };
+
 interface SimpleFinResponse {
   accounts?: SimpleFinAccount[];
   connections?: Array<{ conn_id: string; name?: string; org_id?: string }>;
   /** v1 calls this `errors`; v2 calls it `errlist`. */
-  errors?: Array<string | { msg?: string; code?: string }>;
-  errlist?: Array<string | { msg?: string; code?: string }>;
+  errors?: SimpleFinErrorEntry[];
+  errlist?: SimpleFinErrorEntry[];
 }
 
-/** SimpleFIN reports per-account problems in the body of an otherwise-OK response. */
+/**
+ * SimpleFIN reports per-institution problems in the body of an otherwise-OK
+ * 200 response, so a bank can fail while the request succeeds. The message is
+ * resolved against the connection and account names so it names the bank
+ * rather than an opaque id.
+ */
 function collectWarnings(payload: SimpleFinResponse): string[] {
   const raw = [...(payload.errors ?? []), ...(payload.errlist ?? [])];
-  return raw.map((entry) =>
-    typeof entry === "string" ? entry : (entry.msg ?? entry.code ?? "Unknown error"),
+
+  const connectionNames = new Map(
+    (payload.connections ?? []).map((entry) => [entry.conn_id, entry.name]),
   );
+  const accountNames = new Map(
+    (payload.accounts ?? []).map((entry) => [entry.id, entry.name]),
+  );
+
+  return raw.map((entry) => {
+    if (typeof entry === "string") return entry;
+    const text = entry.msg ?? entry.code ?? "Unknown error";
+    const who =
+      (entry.account_id ? accountNames.get(entry.account_id) : undefined) ??
+      (entry.conn_id ? connectionNames.get(entry.conn_id) : undefined);
+    return who ? `${who}: ${text}` : text;
+  });
 }
 
 /**
@@ -564,6 +591,121 @@ export async function syncAllConnections(options: { fullHistory?: boolean } = {}
   }
 
   return { results, errors };
+}
+
+export interface SimpleFinDiagnosis {
+  http_status: number;
+  window_days: number;
+  /** Institutions SimpleFIN says are attached to this connection. */
+  connections: Array<{ id: string; name: string }>;
+  accounts: Array<{
+    id: string;
+    name: string;
+    institution: string | null;
+    balance: string | null;
+    transactions_returned: number;
+    oldest: string | null;
+    newest: string | null;
+    known_locally: boolean;
+  }>;
+  /** Accounts this app has stored that the feed did NOT return this time. */
+  missing_locally_known: string[];
+  errors: string[];
+}
+
+/**
+ * Fetch the feed and report exactly what came back, writing nothing.
+ *
+ * When one bank syncs and another does not, the app-side code path is identical
+ * for both — so the answer is always in the response, and the only useful thing
+ * to do is show it. This distinguishes the three cases that look the same from
+ * the outside: the account is absent entirely, the account is present but
+ * returned zero transactions, or SimpleFIN reported an error against it.
+ */
+export async function diagnoseConnection(
+  connectionId: number,
+  windowDays = FIRST_SYNC_DAYS,
+): Promise<SimpleFinDiagnosis> {
+  const connection = db
+    .prepare("SELECT access_url FROM simplefin_connections WHERE id = ?")
+    .get(connectionId) as { access_url: string } | undefined;
+  if (!connection) throw new SimpleFinError(`No SimpleFIN connection ${connectionId}.`, "api");
+
+  const { base, authorization } = splitAccessUrl(connection.access_url);
+  const startDate = Math.floor(Date.now() / 1000) - windowDays * 86400;
+
+  let response: Response;
+  try {
+    response = await fetch(`${base}/accounts?start-date=${startDate}&pending=1`, {
+      headers: { Authorization: authorization },
+    });
+  } catch (error) {
+    throw new SimpleFinError(
+      `Could not reach SimpleFIN: ${error instanceof Error ? error.message : error}`,
+      "network",
+    );
+  }
+
+  if (!response.ok) {
+    return {
+      http_status: response.status,
+      window_days: windowDays,
+      connections: [],
+      accounts: [],
+      missing_locally_known: [],
+      errors: [
+        response.status === 403
+          ? "SimpleFIN rejected the stored credentials (403). Claim a new Setup Token."
+          : `SimpleFIN returned ${response.status}.`,
+      ],
+    };
+  }
+
+  const payload = (await response.json()) as SimpleFinResponse;
+  const connectionNames = new Map(
+    (payload.connections ?? []).map((entry) => [entry.conn_id, entry.name]),
+  );
+
+  const knownRows = db
+    .prepare(
+      "SELECT simplefin_account_id, name FROM accounts WHERE simplefin_connection_id = ?",
+    )
+    .all(connectionId) as Array<{ simplefin_account_id: string; name: string }>;
+  const returnedIds = new Set((payload.accounts ?? []).map((account) => account.id));
+
+  return {
+    http_status: response.status,
+    window_days: windowDays,
+    connections: (payload.connections ?? []).map((entry) => ({
+      id: entry.conn_id,
+      name: entry.name ?? entry.conn_id,
+    })),
+    accounts: (payload.accounts ?? []).map((account) => {
+      const dates = (account.transactions ?? [])
+        .map((transaction) => toDateString(new Date(transaction.posted * 1000)))
+        .sort();
+      return {
+        id: account.id,
+        name: account.name,
+        institution:
+          account.org?.name ??
+          (account.conn_id ? (connectionNames.get(account.conn_id) ?? null) : null),
+        balance: account.balance ?? null,
+        transactions_returned: (account.transactions ?? []).length,
+        oldest: dates[0] ?? null,
+        newest: dates[dates.length - 1] ?? null,
+        known_locally: Boolean(
+          db
+            .prepare("SELECT 1 FROM accounts WHERE simplefin_account_id = ?")
+            .get(account.id),
+        ),
+      };
+    }),
+    missing_locally_known: knownRows
+      .filter((row) => !returnedIds.has(row.simplefin_account_id))
+      .map((row) => row.name),
+    errors: collectWarnings(payload),
+  };
 }
 
 /**

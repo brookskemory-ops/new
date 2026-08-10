@@ -330,6 +330,24 @@ interface SyncAccountDetail {
   is_new: boolean;
 }
 
+interface Diagnosis {
+  http_status: number;
+  window_days: number;
+  connections: Array<{ id: string; name: string }>;
+  accounts: Array<{
+    id: string;
+    name: string;
+    institution: string | null;
+    balance: string | null;
+    transactions_returned: number;
+    oldest: string | null;
+    newest: string | null;
+    known_locally: boolean;
+  }>;
+  missing_locally_known: string[];
+  errors: string[];
+}
+
 function SimpleFinSection({ connections }: { connections: SimpleFinConnection[] }) {
   const router = useRouter();
   const [token, setToken] = useState("");
@@ -337,6 +355,7 @@ function SimpleFinSection({ connections }: { connections: SimpleFinConnection[] 
   const [status, setStatus] = useState<{ text: string; error: boolean } | null>(null);
   const [showForm, setShowForm] = useState(connections.length === 0);
   const [accountDetail, setAccountDetail] = useState<SyncAccountDetail[]>([]);
+  const [diagnosis, setDiagnosis] = useState<Diagnosis | null>(null);
 
   async function connect(event: React.FormEvent) {
     event.preventDefault();
@@ -421,6 +440,22 @@ function SimpleFinSection({ connections }: { connections: SimpleFinConnection[] 
     }
   }
 
+  async function diagnose(connectionId: number) {
+    setBusy("diagnose");
+    setStatus(null);
+    setDiagnosis(null);
+    try {
+      const response = await fetch(`/api/simplefin/diagnose?connection=${connectionId}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      setDiagnosis(data.diagnosis);
+    } catch (error) {
+      setStatus({ text: describe(error), error: true });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function disconnect(connectionId: number) {
     if (
       !confirm(
@@ -488,6 +523,8 @@ function SimpleFinSection({ connections }: { connections: SimpleFinConnection[] 
         </p>
       )}
 
+      {diagnosis && <DiagnosisReport diagnosis={diagnosis} />}
+
       {accountDetail.length > 0 && (
         <div className="mb-3 rounded-lg bg-surface-2 p-3">
           <div className="mb-1 text-xs font-medium">Last sync, by account</div>
@@ -547,6 +584,15 @@ function SimpleFinSection({ connections }: { connections: SimpleFinConnection[] 
                   title="Ignore the incremental window and re-pull a full year. Use this if a bank looks like it is missing history."
                 >
                   Full re-pull
+                </button>
+                <button
+                  type="button"
+                  onClick={() => diagnose(connection.id)}
+                  className="btn py-1 text-xs"
+                  disabled={busy !== null}
+                  title="Show exactly what SimpleFIN returns, without changing anything."
+                >
+                  {busy === "diagnose" ? "Checking…" : "Diagnose"}
                 </button>
                 <button
                   type="button"
@@ -897,6 +943,87 @@ function CsvImport({ accounts }: { accounts: Account[] }) {
       {result && <p className="mt-2 text-xs text-positive">{result}</p>}
       {error && <p className="mt-2 text-xs text-negative">{error}</p>}
     </section>
+  );
+}
+
+/**
+ * What SimpleFIN actually returned, laid out so the three indistinguishable
+ * failure cases become distinguishable: account absent, account present but
+ * empty, or account errored.
+ */
+function DiagnosisReport({ diagnosis }: { diagnosis: Diagnosis }) {
+  return (
+    <div className="mb-3 rounded-lg border border-border bg-surface-2 p-3">
+      <div className="mb-2 flex items-baseline justify-between gap-2">
+        <span className="text-xs font-semibold">
+          What SimpleFIN returned
+        </span>
+        <span className="text-xs text-faint">
+          HTTP {diagnosis.http_status} · last {diagnosis.window_days} days
+        </span>
+      </div>
+
+      {diagnosis.errors.length > 0 && (
+        <ul className="mb-2 rounded bg-negative-soft px-2 py-1.5 text-xs text-negative">
+          {diagnosis.errors.map((message, index) => (
+            <li key={index}>{message}</li>
+          ))}
+        </ul>
+      )}
+
+      {diagnosis.connections.length > 0 && (
+        <p className="mb-2 text-xs text-muted">
+          Institutions attached:{" "}
+          {diagnosis.connections.map((entry) => entry.name).join(", ")}
+        </p>
+      )}
+
+      {diagnosis.accounts.length === 0 ? (
+        <p className="text-xs text-negative">
+          No accounts returned at all. The connection exists but SimpleFIN is
+          sending nothing — check it on their site.
+        </p>
+      ) : (
+        <ul className="text-xs">
+          {diagnosis.accounts.map((account) => (
+            <li
+              key={account.id}
+              className="flex flex-wrap items-baseline justify-between gap-x-3 border-t border-border py-1 first:border-t-0"
+            >
+              <span className="min-w-0 truncate font-medium">
+                {account.name}
+                {account.institution && (
+                  <span className="ml-1 font-normal text-faint">
+                    {account.institution}
+                  </span>
+                )}
+              </span>
+              <span
+                className={`tnum shrink-0 ${account.transactions_returned === 0 ? "text-negative" : "text-muted"}`}
+              >
+                {account.transactions_returned === 0
+                  ? "0 transactions returned"
+                  : `${account.transactions_returned} transactions · ${account.oldest} → ${account.newest}`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {diagnosis.missing_locally_known.length > 0 && (
+        <p className="mt-2 text-xs text-negative">
+          Stored here but not returned this time:{" "}
+          {diagnosis.missing_locally_known.join(", ")}
+        </p>
+      )}
+
+      <p className="mt-2 text-xs text-faint">
+        An account showing 0 transactions is SimpleFIN sending none — nothing in
+        this app filters them out. That usually means the institution needs
+        re-authorising on SimpleFIN&apos;s site, or it has not finished its first
+        pull.
+      </p>
+    </div>
   );
 }
 

@@ -223,6 +223,13 @@ for the current number.
   there for anything else.
 - Each sync reports what every account returned, so a bank sending nothing is
   visible rather than silent.
+- **If one bank syncs and another doesn't, press "Diagnose."** It fetches the
+  feed read-only and shows exactly what SimpleFIN sent: which institutions are
+  attached, how many transactions each account returned and over what dates,
+  any accounts stored here that the feed stopped returning, and SimpleFIN's own
+  errors *with the bank name attached*. Nothing in this app filters
+  transactions out, so an account showing zero means SimpleFIN sent zero —
+  usually an institution that needs re-authorising on their site.
 - Your Access URL is the credential — it embeds a username and password. It's
   stored only in your local database and never sent anywhere except SimpleFIN.
 - **Disconnect** deletes the connection and everything it imported. It does
