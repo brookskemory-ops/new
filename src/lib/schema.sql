@@ -81,6 +81,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   source                TEXT    NOT NULL DEFAULT 'manual'
                                 CHECK (source IN ('manual','plaid','csv','simplefin')),
   plaid_transaction_id  TEXT UNIQUE,
+  -- Bank-issued unique id from an OFX/QFX import; makes re-import exact.
+  ofx_fitid             TEXT,
   -- Set when a human picks the category, so auto-categorization never
   -- overwrites a decision you made yourself.
   category_locked       INTEGER NOT NULL DEFAULT 0,

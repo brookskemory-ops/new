@@ -37,11 +37,18 @@ npm run reset    # wipes all data, keeps the app set up
 
 Three ways, and they work together. Start with the first.
 
-### 1. Import a CSV (works right now, no signup)
+### 1. Import a statement file (works right now, no signup)
 
-Every bank and credit card lets you export transactions as CSV. Download the
-last 3–6 months, go to **Accounts → Import a CSV**, pick the account, and drop
-the file in.
+Every bank and credit card lets you export transactions. Download the last 3–6
+months, go to **Accounts → Import a statement**, pick the account, and drop the
+file in. CSV and **Quicken (.qfx) / Money (.ofx)** both work, detected from the
+file's contents rather than its extension.
+
+**Prefer .qfx or .ofx if your bank offers it** — usually the button right next
+to the CSV one. Those formats carry `FITID`, a unique id the bank assigns each
+transaction, which makes re-importing overlapping statements exact instead of a
+guess. If you already imported a period as CSV and then import the same period
+as QFX, the earlier rows adopt their ids rather than duplicating.
 
 Date, amount, and description columns are detected automatically. All three
 common export shapes work unchanged:

@@ -141,6 +141,7 @@ function addLaterColumns(database: Database.Database) {
     ["accounts", "simplefin_connection_id", "INTEGER REFERENCES simplefin_connections(id) ON DELETE CASCADE"],
     ["accounts", "simplefin_account_id", "TEXT"],
     ["transactions", "simplefin_transaction_id", "TEXT"],
+    ["transactions", "ofx_fitid", "TEXT"],
   ];
 
   for (const [table, column, definition] of added) {
@@ -156,6 +157,11 @@ function addLaterColumns(database: Database.Database) {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_simplefin
       ON transactions(simplefin_transaction_id)
       WHERE simplefin_transaction_id IS NOT NULL;
+    -- Scoped to the account: two banks can legitimately issue the same FITID,
+    -- so uniqueness is per account rather than global.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_ofx
+      ON transactions(account_id, ofx_fitid)
+      WHERE ofx_fitid IS NOT NULL;
   `);
 }
 

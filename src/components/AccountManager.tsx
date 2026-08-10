@@ -909,8 +909,15 @@ function CsvImport({ accounts }: { accounts: Account[] }) {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
 
-      const parts = [`Imported ${data.imported} transactions`];
+      const parts = [
+        `Imported ${data.imported} transactions${data.format === "ofx" ? " from the OFX file" : ""}`,
+      ];
       if (data.duplicates > 0) parts.push(`skipped ${data.duplicates} already present`);
+      if (data.linked_to_existing > 0) {
+        parts.push(
+          `matched ${data.linked_to_existing} against earlier CSV rows instead of duplicating them`,
+        );
+      }
       if (data.skipped > 0) parts.push(`${data.skipped} rows unreadable`);
       setResult(`${parts.join(", ")}.`);
 
@@ -925,19 +932,23 @@ function CsvImport({ accounts }: { accounts: Account[] }) {
 
   return (
     <section className="card p-4">
-      <h2 className="section-title">Import a CSV</h2>
+      <h2 className="section-title">Import a statement</h2>
       <p className="mt-1 text-xs text-muted">
-        Export from your bank&apos;s website and drop the file here. Date, amount,
-        and description columns are detected automatically — most US bank and card
-        exports work unchanged. Re-importing an overlapping statement is safe;
-        duplicates are skipped.
+        Export from your bank&apos;s website and drop the file here. Takes CSV and{" "}
+        <strong className="text-text">Quicken (.qfx) / Money (.ofx)</strong>, and
+        detects which it is from the contents.
+      </p>
+      <p className="mt-1 text-xs text-muted">
+        <strong className="text-text">Prefer .qfx if your bank offers it.</strong>{" "}
+        It carries a unique id per transaction, so re-importing overlapping
+        statements matches exactly instead of guessing.
       </p>
 
       <form onSubmit={upload} className="mt-3 flex flex-col gap-2">
         <input
           ref={inputRef}
           type="file"
-          accept=".csv,text/csv"
+          accept=".csv,.qfx,.ofx,.qbo,text/csv"
           className="field"
           required
           aria-label="CSV file"
