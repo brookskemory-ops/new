@@ -418,6 +418,25 @@ function SimpleFinSection({ connections }: { connections: SimpleFinConnection[] 
 
       const parts: string[] = [];
       parts.push(added > 0 ? `Added ${added} new transactions.` : "No new transactions.");
+
+      const skipped = data.results.reduce(
+        (sum: number, r: { skipped_no_date?: number }) => sum + (r.skipped_no_date ?? 0),
+        0,
+      );
+      const repaired = data.results.reduce(
+        (sum: number, r: { repaired_bad_dates?: number }) => sum + (r.repaired_bad_dates ?? 0),
+        0,
+      );
+      if (repaired > 0) {
+        parts.push(
+          `Removed ${repaired} previously-imported ${repaired === 1 ? "row" : "rows"} that had an impossible date and were invisible in every month.`,
+        );
+      }
+      if (skipped > 0) {
+        parts.push(
+          `${skipped} ${skipped === 1 ? "row" : "rows"} skipped — SimpleFIN sent them without a usable date.`,
+        );
+      }
       if (silent.length > 0) {
         parts.push(
           `${silent.map((entry) => entry.name).join(", ")} returned nothing — if that looks wrong, check the connection on SimpleFIN's site.`,
@@ -487,6 +506,8 @@ function SimpleFinSection({ connections }: { connections: SimpleFinConnection[] 
           <h2 className="section-title">SimpleFIN</h2>
           <p className="text-xs text-muted">
             Automatic sync without a developer account. No API keys to set up.
+            SimpleFIN caps history at 90 days — use CSV import for anything
+            older.
           </p>
         </div>
         <div className="flex gap-2">

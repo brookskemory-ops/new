@@ -187,8 +187,9 @@ you're done.
 4. In Ledger: **Accounts → SimpleFIN → Connect**, paste the token, press
    Connect.
 
-That's it. It immediately pulls up to a year of history, and after that
-**Sync now** fetches anything new.
+That's it. It pulls the last 90 days — SimpleFIN's maximum — and after that
+**Sync now** fetches anything new. For older history, export a CSV from your
+bank and import that; the two sit side by side without duplicating.
 
 The Setup Token works exactly once. If you paste it twice, or it errors and you
 retry, generate a fresh one — the app will tell you if that's what happened.

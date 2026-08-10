@@ -235,6 +235,17 @@ function collectWarnings(payload: SimpleFinResponse): string[] {
 }
 
 /**
+ * A unix timestamp that could plausibly belong to a bank transaction.
+ * Anything at or before the epoch is a missing value dressed up as a date:
+ * `posted: 0` multiplied out lands on 1970-01-01, which reads as 1969-12-31
+ * west of UTC and files a real transaction decades from any month view.
+ */
+function isUsableTimestamp(value: unknown): value is number {
+  // 2000-01-01. No consumer bank feed legitimately predates this.
+  return typeof value === "number" && Number.isFinite(value) && value > 946_684_800;
+}
+
+/**
  * Guess an account type from its name and balance.
  *
  * SimpleFIN carries no type field, and a credit card treated as an asset shows
@@ -297,14 +308,24 @@ export interface SimpleFinSyncResult {
   }>;
   /** True when a newly-discovered account triggered a full-history backfill. */
   backfilled: boolean;
+  /** Rows the feed sent with no usable date — reported rather than mis-filed. */
+  skipped_no_date: number;
+  /** Previously-imported rows with an impossible date, cleaned up. */
+  repaired_bad_dates: number;
 }
 
 /* ------------------------------------------------------------------ */
 /* Syncing                                                             */
 /* ------------------------------------------------------------------ */
 
-/** How far back to look the first time. Later syncs only need recent history. */
-const FIRST_SYNC_DAYS = 365;
+/**
+ * How far back to look the first time.
+ *
+ * SimpleFIN caps a request at 90 days and says so in the response — asking for
+ * a year silently got 90 days plus a warning, which made "Full re-pull" claim
+ * more than it delivered. Ask for what is actually available.
+ */
+const FIRST_SYNC_DAYS = 90;
 /**
  * Overlap re-fetched on every sync. Banks amend and back-date transactions for
  * a few days after they post; the stable transaction id makes the overlap free.
@@ -433,6 +454,8 @@ export async function syncConnection(
 
   let added = 0;
   let updated = 0;
+  let skippedNoDate = 0;
+  let repairedBadDates = 0;
   const perAccount: SimpleFinSyncResult["per_account"] = [];
   const seenIds = new Set<string>();
 
@@ -478,9 +501,24 @@ export async function syncConnection(
         const amountCents = parseAmountToCents(transaction.amount);
         if (amountCents === null) continue;
 
-        // `posted` is a unix timestamp; store the local calendar date so it
-        // matches how a person reads their statement.
-        const date = toDateString(new Date(transaction.posted * 1000));
+        // `posted` is a unix timestamp. Some feeds send 0 or omit it, and
+        // multiplying that out lands the row on 1970-01-01 — which reads as
+        // 1969-12-31 west of UTC and, either way, files a real transaction
+        // decades away from every month view, where it is invisible rather
+        // than merely wrong. Fall back to transacted_at, then give up loudly.
+        const stamp =
+          isUsableTimestamp(transaction.posted)
+            ? transaction.posted
+            : isUsableTimestamp(transaction.transacted_at)
+              ? transaction.transacted_at!
+              : null;
+
+        if (stamp === null) {
+          skippedNoDate++;
+          continue;
+        }
+
+        const date = toDateString(new Date(stamp * 1000));
 
         const description = transaction.description ?? transaction.memo ?? "";
         const merchant = transaction.payee ?? description;
@@ -550,6 +588,14 @@ export async function syncConnection(
       if (!seenIds.has(row.simplefin_transaction_id)) dropPending.run(row.id);
     }
 
+    // Clean up rows a previous version filed at the epoch. They are invisible
+    // in every month view, so leaving them is not "keeping the data" — it is
+    // keeping a row nobody can ever see, with a date that is certainly wrong.
+    // They come back correctly on the next sync if the feed supplies a date.
+    repairedBadDates = db
+      .prepare("DELETE FROM transactions WHERE source = 'simplefin' AND date < '2000-01-01'")
+      .run().changes;
+
     db.prepare(
       `UPDATE simplefin_connections
           SET last_synced_at = datetime('now'), status = 'active'
@@ -564,6 +610,8 @@ export async function syncConnection(
     warnings,
     per_account: perAccount,
     backfilled,
+    skipped_no_date: skippedNoDate,
+    repaired_bad_dates: repairedBadDates,
   };
 }
 
@@ -682,6 +730,7 @@ export async function diagnoseConnection(
     })),
     accounts: (payload.accounts ?? []).map((account) => {
       const dates = (account.transactions ?? [])
+        .filter((transaction) => isUsableTimestamp(transaction.posted))
         .map((transaction) => toDateString(new Date(transaction.posted * 1000)))
         .sort();
       return {
