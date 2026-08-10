@@ -133,6 +133,42 @@ budget you've never once hit is a budget you'll ignore.
 
 ---
 
+## Forecast
+
+Every other page reports the past. This one looks forward, and it is the part
+most worth checking before you spend money.
+
+**Safe to spend** is the headline: what is in checking and cash, minus every
+bill already committed before your next paycheck lands. The arithmetic is shown
+next to it, because a number like this is only worth trusting if you can see
+where it came from. Savings is excluded on purpose — it is money you decided
+not to spend, and counting it would quietly tell you a bill is covered when
+covering it means raiding the emergency fund.
+
+**Projected balance** draws two lines. The solid one applies your usual
+day-to-day spending, measured from the last 90 days; the dashed one applies
+only bills and income. The dashed line always slopes upward — that is exactly
+why it is not the one you read. The lowest point is called out, since that is
+the moment something bounces.
+
+**What is coming** lists detected commitments with their next due date. A
+charge only qualifies if it repeats at a consistent interval *and* a consistent
+amount. That combination is what keeps groceries out: a supermarket you visit
+twice a month has the same *average* gap as a subscription and nothing like the
+same rhythm. It also means the list stays empty until you have roughly three
+months of history — an honest empty state beats a confident wrong one.
+
+**Quiet price rises** flags recurring charges that went up without telling you,
+comparing the latest charge against what that merchant used to bill, and totals
+what the increases cost you per year. Streaming services do this constantly.
+
+**What happened to your raise** finds a step change in income and measures how
+much of it went straight back out as higher spending. A raise that is fully
+absorbed leaves you exactly where you were, which is easy to miss month to
+month and obvious across the boundary.
+
+---
+
 ## Bank sync (SimpleFIN)
 
 Optional. Probably the one you want.
@@ -302,6 +338,7 @@ src/
     page.tsx            Dashboard
     transactions/       Searchable, editable transaction list
     budgets/            Budget editor with history-based suggestions
+    forecast/           Safe-to-spend, projections, recurring commitments
     accounts/           Accounts, bank sync, CSV import
     insights/           AI analysis
     api/                JSON API behind all of the above
@@ -316,6 +353,7 @@ src/
     simplefin.ts        Bank sync via SimpleFIN
     ai.ts               Claude integration
     csv.ts              CSV import and merchant-name cleanup
+    forecast.ts         Recurrence detection and forward projection
 scripts/
   seed.ts               Demo data
   reset.ts              Wipe data

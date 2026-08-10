@@ -10,6 +10,7 @@ import {
   formatMonth,
   monthProgress,
 } from "@/lib/money";
+import { buildForecast } from "@/lib/forecast";
 import {
   budgetProgress,
   categoryTotals,
@@ -45,6 +46,9 @@ export default async function Dashboard({
   const accounts = listAccounts();
   const allCategories = listCategories();
   const needsReview = countTransactions({ month, uncategorizedOnly: true });
+  // Only meaningful for the month in progress — "safe to spend" in a month
+  // that already ended is a number about the past pretending to be advice.
+  const forecast = month === currentMonth() ? buildForecast() : null;
 
   const progress = monthProgress(month);
   const recurringTotal = recurring.reduce((sum, row) => sum + row.avg_cents, 0);
@@ -82,12 +86,25 @@ export default async function Dashboard({
           sub={summary.net_cents >= 0 ? "You kept money this month" : "You spent more than you earned"}
           tone={summary.net_cents >= 0 ? "positive" : "negative"}
         />
+        {forecast ? (
+          <StatTile
+            label="Safe to spend"
+            value={formatCents(forecast.safe_to_spend_cents)}
+            sub={
+              forecast.next_income
+                ? `after committed bills, until ${formatDateShort(forecast.next_income.date)}`
+                : "after committed bills"
+            }
+            tone={forecast.safe_to_spend_cents < 0 ? "negative" : "neutral"}
+          />
+        ) : (
         <StatTile
           label="Net worth"
           value={formatCents(worth.net)}
           sub={`${formatCents(worth.assets)} assets · ${formatCents(worth.liabilities)} owed`}
           tone={worth.net >= 0 ? "neutral" : "negative"}
         />
+        )}
       </section>
 
       {(overBudget.length > 0 || needsReview > 0) && (
