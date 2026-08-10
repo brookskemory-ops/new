@@ -31,10 +31,11 @@ export const POST = route(async (request: Request) => {
 
   const result = db
     .prepare(
-      `INSERT INTO accounts (name, type, institution, balance_cents, is_manual)
-       VALUES (?, ?, ?, ?, 1)`,
+      `INSERT INTO accounts
+         (name, type, institution, balance_cents, opening_balance_cents, is_manual)
+       VALUES (?, ?, ?, ?, ?, 1)`,
     )
-    .run(body.name, body.type, body.institution ?? null, balance);
+    .run(body.name, body.type, body.institution ?? null, balance, balance);
 
   return ok({ id: Number(result.lastInsertRowid) }, 201);
 });

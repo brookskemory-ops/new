@@ -717,6 +717,31 @@ function AccountRow({ account }: { account: Account }) {
     }
   }
 
+  async function reconcile() {
+    const actual = prompt(
+      `How much is actually in "${account.name}" right now?\n\nThe difference from ${formatCents(account.balance_cents)} is recorded as a visible adjustment, so the ledger still adds up.`,
+      (account.balance_cents / 100).toFixed(2),
+    );
+    if (actual === null) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/accounts/${account.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reconcile_to: actual }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      router.refresh();
+    } catch (caught) {
+      setError(describe(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function remove() {
     if (
       !confirm(
@@ -778,15 +803,26 @@ function AccountRow({ account }: { account: Account }) {
         </span>
 
         {account.is_manual === 1 && (
-          <button
-            type="button"
-            onClick={remove}
-            disabled={busy}
-            className="text-xs text-faint hover:text-negative"
-            aria-label={`Delete ${account.name}`}
-          >
-            Delete
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={reconcile}
+              disabled={busy}
+              className="text-xs text-faint hover:text-accent"
+              title="Count what is actually there and record the difference"
+            >
+              Reconcile
+            </button>
+            <button
+              type="button"
+              onClick={remove}
+              disabled={busy}
+              className="text-xs text-faint hover:text-negative"
+              aria-label={`Delete ${account.name}`}
+            >
+              Delete
+            </button>
+          </>
         )}
       </div>
 
@@ -831,7 +867,9 @@ function AccountList({ accounts }: { accounts: Account[] }) {
 
       <p className="mb-2 text-xs text-muted">
         Change an account&apos;s type if it was guessed wrong — credit cards and
-        loans count against net worth instead of toward it.
+        loans count against net worth instead of toward it. Balances on manual
+        accounts move as you record transactions; <strong>Reconcile</strong>
+        {" "}trues one up when you count what is actually there.
       </p>
 
       <ul className="mb-4 divide-y divide-border text-sm">

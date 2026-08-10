@@ -142,11 +142,29 @@ function addLaterColumns(database: Database.Database) {
     ["accounts", "simplefin_account_id", "TEXT"],
     ["transactions", "simplefin_transaction_id", "TEXT"],
     ["transactions", "ofx_fitid", "TEXT"],
+    // What the account held before any recorded transaction. A manual
+    // account's live balance is this plus its transactions, so spending cash
+    // actually moves the number.
+    ["accounts", "opening_balance_cents", "INTEGER NOT NULL DEFAULT 0"],
   ];
 
   for (const [table, column, definition] of added) {
     if (!columnExists(table, column)) {
       database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+
+      // Existing manual accounts had a static balance that was *meant* to be
+      // current. Seed the opening balance from it minus the transactions
+      // already recorded, so today's derived balance matches what the user
+      // last saw rather than jumping.
+      if (table === "accounts" && column === "opening_balance_cents") {
+        database.exec(`
+          UPDATE accounts SET opening_balance_cents =
+            balance_cents - COALESCE(
+              (SELECT SUM(t.amount_cents) FROM transactions t WHERE t.account_id = accounts.id),
+              0)
+          WHERE is_manual = 1
+        `);
+      }
     }
   }
 

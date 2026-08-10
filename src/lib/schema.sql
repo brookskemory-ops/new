@@ -13,7 +13,11 @@ CREATE TABLE IF NOT EXISTS accounts (
                             CHECK (type IN ('checking','savings','credit','cash','investment','loan','other')),
   institution       TEXT,
   mask              TEXT,                       -- last 4 digits, display only
+  -- For synced accounts this is the bank's figure, overwritten each sync.
+  -- For manual accounts it is a cache; the live value is derived in
+  -- queries.ts as opening_balance_cents + the account's transactions.
   balance_cents     INTEGER NOT NULL DEFAULT 0,
+  opening_balance_cents INTEGER NOT NULL DEFAULT 0,
   currency          TEXT    NOT NULL DEFAULT 'USD',
   is_manual         INTEGER NOT NULL DEFAULT 1, -- 1 = you maintain it by hand
   archived          INTEGER NOT NULL DEFAULT 0,

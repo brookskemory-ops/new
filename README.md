@@ -121,6 +121,43 @@ brands, but it will still get one wrong eventually.
 worth updates immediately. That dropdown is the real fix; the guessing is just
 there to save you the work most of the time.
 
+### Manual accounts move with their transactions
+
+For accounts nothing syncs into — cash, or a bank you import by hand — the
+balance is **derived**: an opening balance plus every transaction recorded
+against it. Spend $45 from a $200 wallet and it reads $155 without you touching
+anything.
+
+This was worth fixing properly. Storing a balance and a transaction list
+separately means they drift the moment you record anything, and a balance that
+lies is worse than no balance at all.
+
+### Reconciling
+
+Cash never matches exactly. You buy a coffee and forget. On the Accounts page,
+**Reconcile** takes what the account *actually* holds and records the gap as a
+visible transaction — "Balance adjustment · Cash spent but not recorded" —
+rather than silently rewriting the number.
+
+The difference matters: a rewritten balance hides that you spent $35 you can't
+account for. A ledger entry keeps it in your spending totals, where it belongs.
+
+---
+
+## Cash on hand
+
+Cash is the spending that goes unrecorded and quietly breaks every other total.
+The dashboard has a **Cash on hand** card for it: an amount, what it was for,
+and it's in. No date picker, no category dropdown, no account selector unless
+you keep more than one wallet.
+
+That minimalism is the whole point. A six-field form does not get filled in at
+a coffee counter, and a roughly-recorded expense beats one you never entered.
+Categorization runs on what you typed, so "lunch" files itself.
+
+Press **Track cash** the first time to create the wallet with what's in your
+pocket right now.
+
 ---
 
 ## Budgets
@@ -173,6 +210,22 @@ what the increases cost you per year. Streaming services do this constantly.
 much of it went straight back out as higher spending. A raise that is fully
 absorbed leaves you exactly where you were, which is easy to miss month to
 month and obvious across the boundary.
+
+---
+
+## Goals
+
+The **Goals** page tracks what you're saving toward — an emergency fund, a
+deposit, a trip — and answers the only question that matters about a goal:
+*when.*
+
+The date comes from your **median saving month over the last six months**, not
+from what you intend to save. The median specifically: one windfall month
+shouldn't promise a date you'll never hit, and one bad month shouldn't say
+never. If the honest answer is "not at this rate", it says that rather than
+inventing a date.
+
+Update the saved amount as it grows and the projection moves with it.
 
 ---
 
@@ -351,6 +404,29 @@ when your data actually changed or you click "Run a fresh analysis".
 Set `ANTHROPIC_MODEL=claude-sonnet-5` in `.env` if you want it cheaper; the
 default is `claude-opus-5`, which gives noticeably better financial reasoning.
 
+### Ask a question
+
+Below the analysis on the same page is a chat box. Ask things the dashboard
+doesn't have a tile for — *"how much do I spend on coffee?"*, *"can I afford a
+$400 purchase this week?"*, *"which subscriptions should I cancel?"*
+
+It works differently from the analysis above it, and the difference is the
+point. Rather than sending a summary and hoping the answer is in it, Claude is
+given **seven read-only lookups** — month summary, category breakdown, merchant
+search, monthly trend, recurring commitments, cash position, top merchants —
+and fetches only what your question needs. Ask about Starbucks and it pulls one
+merchant total; it never sees the rest of your ledger.
+
+Every lookup returns aggregates. **None of them return a transaction list**, so
+individual dates, amounts, and payees stay on the machine — the same posture as
+the analysis above.
+
+Which lookups were consulted is printed under each answer. An answer about
+money that you cannot trace back to a figure is not worth much.
+
+Roughly a cent a question. Follow-ups work — "what about last month?" resolves
+against what you just asked.
+
 ---
 
 ## Project layout
@@ -362,8 +438,9 @@ src/
     transactions/       Searchable, editable transaction list
     budgets/            Budget editor with history-based suggestions
     forecast/           Safe-to-spend, projections, recurring commitments
-    accounts/           Accounts, bank sync, CSV import
-    insights/           AI analysis
+    goals/              Savings goals with rate-based arrival dates
+    accounts/           Accounts, bank sync, CSV and OFX/QFX import
+    insights/           AI analysis and the ask-a-question chat
     api/                JSON API behind all of the above
   components/           React components (Charts.tsx has the SVG charts)
   lib/
@@ -375,7 +452,9 @@ src/
     plaid.ts            Bank sync via Plaid
     simplefin.ts        Bank sync via SimpleFIN
     ai.ts               Claude integration
+    chat.ts             Ask-a-question tools and the tool-use loop
     csv.ts              CSV import and merchant-name cleanup
+    ofx.ts              OFX / QFX statement parsing
     forecast.ts         Recurrence detection and forward projection
 scripts/
   seed.ts               Demo data

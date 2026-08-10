@@ -32,14 +32,48 @@ const REAL_ACTIVITY = `
 /* Accounts                                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Accounts with a live balance.
+ *
+ * A synced account's balance comes from the bank. A manual account's is
+ * *derived* — its opening balance plus everything recorded against it — so
+ * spending $45 cash actually reduces the wallet. Storing a static number and
+ * hoping the user maintains it means net worth drifts wrong the moment anyone
+ * uses cash, silently and forever.
+ */
 export function listAccounts(includeArchived = false): Account[] {
   return db
     .prepare(
-      `SELECT * FROM accounts
-        WHERE (? = 1 OR archived = 0)
-        ORDER BY archived ASC, type ASC, name ASC`,
+      `SELECT a.*,
+              CASE WHEN a.is_manual = 1
+                   THEN a.opening_balance_cents + COALESCE(
+                          (SELECT SUM(t.amount_cents)
+                             FROM transactions t WHERE t.account_id = a.id), 0)
+                   ELSE a.balance_cents
+              END AS balance_cents
+         FROM accounts a
+        WHERE (? = 1 OR a.archived = 0)
+        ORDER BY a.archived ASC, a.type ASC, a.name ASC`,
     )
     .all(includeArchived ? 1 : 0) as Account[];
+}
+
+/** One account, with the same derived-balance rule applied. */
+export function getAccount(id: number): Account | null {
+  return (
+    (db
+      .prepare(
+        `SELECT a.*,
+                CASE WHEN a.is_manual = 1
+                     THEN a.opening_balance_cents + COALESCE(
+                            (SELECT SUM(t.amount_cents)
+                               FROM transactions t WHERE t.account_id = a.id), 0)
+                     ELSE a.balance_cents
+                END AS balance_cents
+           FROM accounts a WHERE a.id = ?`,
+      )
+      .get(id) as Account) ?? null
+  );
 }
 
 /**

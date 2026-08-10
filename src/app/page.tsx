@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { BudgetMeter, CategoryBars, StatTile, TrendChart } from "@/components/Charts";
 import { MonthPicker } from "@/components/MonthPicker";
+import { CashCard } from "@/components/CashCard";
 import { QuickAdd } from "@/components/QuickAdd";
 import {
   currentMonth,
@@ -151,13 +152,17 @@ export default async function Dashboard({
           />
         </section>
 
-        <section className="card p-4">
-          <h2 className="section-title mb-1">Add an expense</h2>
-          <p className="mb-4 text-xs text-muted">
-            It gets categorized automatically — you can correct it after.
-          </p>
-          <QuickAdd accounts={accounts} categories={allCategories} />
-        </section>
+        <div className="flex flex-col gap-5">
+          <CashCard accounts={accounts} />
+
+          <section className="card p-4">
+            <h2 className="section-title mb-1">Add an expense</h2>
+            <p className="mb-4 text-xs text-muted">
+              It gets categorized automatically — you can correct it after.
+            </p>
+            <QuickAdd accounts={accounts} categories={allCategories} />
+          </section>
+        </div>
       </div>
 
       <section className="card p-4">

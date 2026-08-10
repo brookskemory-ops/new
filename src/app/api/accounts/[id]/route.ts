@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { parseAmountToCents } from "@/lib/money";
+import { getAccount } from "@/lib/queries";
 import { fail, ok, route } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,14 @@ const UpdateAccount = z.object({
     .optional(),
   institution: z.string().max(80).nullable().optional(),
   balance: z.union([z.string(), z.number()]).optional(),
+  /**
+   * The amount actually present — you counted your wallet. The difference from
+   * the derived balance is recorded as a visible adjustment transaction rather
+   * than quietly rewriting the opening balance, so the ledger still explains
+   * itself: cash you forgot to record shows up as an adjustment, not as money
+   * that appeared from nowhere.
+   */
+  reconcile_to: z.union([z.string(), z.number()]).optional(),
 });
 
 /**
@@ -56,15 +65,54 @@ export const PATCH = route(async (request: Request, context: Context) => {
     }
     const cents = parseAmountToCents(body.balance);
     if (cents === null) return fail("Balance is not a valid number.", 422);
-    updates.push("balance_cents = ?");
-    params.push(cents);
+    // For a manual account the live balance is derived, so an edit here sets
+    // the *opening* figure; writing balance_cents alone would have no effect.
+    updates.push("balance_cents = ?", "opening_balance_cents = ?");
+    params.push(cents, cents);
   }
 
-  if (updates.length === 0) return fail("Nothing to update.", 422);
+  let adjustment: number | null = null;
 
-  db.prepare(`UPDATE accounts SET ${updates.join(", ")} WHERE id = ?`).run(...params, id);
+  if (body.reconcile_to !== undefined) {
+    if (account.is_manual === 0) {
+      return fail("A synced account is reconciled by your bank, not here.", 422);
+    }
+    const actual = parseAmountToCents(body.reconcile_to);
+    if (actual === null) return fail("That is not a valid amount.", 422);
 
-  return ok({ account: db.prepare("SELECT * FROM accounts WHERE id = ?").get(id) });
+    const current = getAccount(id)!.balance_cents;
+    adjustment = actual - current;
+
+    if (adjustment !== 0) {
+      const category = db
+        .prepare("SELECT id FROM categories WHERE name = ?")
+        .get(adjustment < 0 ? "Uncategorized" : "Income") as { id: number } | undefined;
+
+      db.prepare(
+        `INSERT INTO transactions
+           (account_id, category_id, date, amount_cents, merchant, description, source)
+         VALUES (?, ?, date('now','localtime'), ?, ?, ?, 'manual')`,
+      ).run(
+        id,
+        category?.id ?? null,
+        adjustment,
+        "Balance adjustment",
+        adjustment < 0
+          ? "Cash spent but not recorded"
+          : "Cash on hand higher than recorded",
+      );
+    }
+  }
+
+  if (updates.length === 0 && adjustment === null) {
+    return fail("Nothing to update.", 422);
+  }
+
+  if (updates.length > 0) {
+    db.prepare(`UPDATE accounts SET ${updates.join(", ")} WHERE id = ?`).run(...params, id);
+  }
+
+  return ok({ account: getAccount(id), adjustment_cents: adjustment });
 });
 
 /**

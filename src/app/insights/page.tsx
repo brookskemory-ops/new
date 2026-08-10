@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { AskPanel } from "@/components/AskPanel";
 import { InsightsPanel } from "@/components/InsightsPanel";
 import { MonthPicker } from "@/components/MonthPicker";
 import { estimatedCostNote, getCachedInsight, isAIConfigured, aiModel } from "@/lib/ai";
@@ -43,6 +44,8 @@ export default async function InsightsPage({
         Individual transactions, dates, account numbers, and your name never
         leave this machine.
       </div>
+
+      <AskPanel configured={configured} />
 
       <InsightsPanel
         month={month}

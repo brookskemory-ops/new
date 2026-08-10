@@ -11,7 +11,9 @@ export interface Account {
   type: AccountType;
   institution: string | null;
   mask: string | null;
+  /** Live balance: the bank's figure, or derived from opening + transactions. */
   balance_cents: number;
+  opening_balance_cents: number;
   currency: string;
   is_manual: number;
   archived: number;
